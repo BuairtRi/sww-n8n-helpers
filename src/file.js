@@ -139,7 +139,7 @@ function getMimeTypeFromExtension(extension) {
  * @returns {number|null} Size in bytes or null if invalid
  */
 function parseContentLength(contentLength) {
-  if (!contentLength) return null;
+  if (contentLength == null || contentLength === '') return null;
   
   const size = parseInt(contentLength);
   return isNaN(size) ? null : size;

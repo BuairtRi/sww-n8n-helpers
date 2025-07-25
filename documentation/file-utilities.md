@@ -2,6 +2,28 @@
 
 Comprehensive file and media handling utilities for generating safe filenames, validating URLs, and working with MIME types in n8n workflows.
 
+## Import Options
+
+The module supports both individual function imports and module namespace imports:
+
+**Individual Function Imports:**
+```javascript
+const { generateSafeFileName, extractFileExtension } = require('@rin8n/content-processing-utils');
+```
+
+**Module Namespace Imports:**
+```javascript
+const { file } = require('@rin8n/content-processing-utils');
+// Now use: file.generateSafeFileName(), file.extractFileExtension(), etc.
+```
+
+**Full Module Import:**
+```javascript
+const utils = require('@rin8n/content-processing-utils');
+// Individual functions: utils.generateSafeFileName()
+// Module namespaces: utils.file.generateSafeFileName()
+```
+
 ## Key Functions
 
 ### `generateSafeFileName(title, fileExtension, options)`
@@ -128,6 +150,8 @@ const httpHeaders = {
 
 Handle file size validation and parsing.
 
+**Note**: `parseContentLength(0)` returns `0` (not `null`) as zero is a valid content length for empty files.
+
 **Example: Download Decisions**
 ```javascript
 const { parseContentLength, validateFileSize } = require('@rin8n/content-processing-utils');
@@ -148,14 +172,28 @@ const shouldDownload = validateFileSize(sizeInBytes, limits);
 
 ## Usage Patterns
 
-### File Processing Pipeline
+### File Processing Pipeline (Individual Functions)
 ```javascript
+const { extractFileExtension, generateSafeFileName, validateAudioUrl } = require('@rin8n/content-processing-utils');
+
 const url = "https://example.com/podcast.mp3";
 const title = "My Podcast: Episode #1";
 
 const extension = extractFileExtension(url, 'audio/mpeg', 'mp3'); // "mp3"
 const filename = generateSafeFileName(title, extension);          // "My_Podcast__Episode__1.mp3"
 const isValid = validateAudioUrl(url);                            // true
+```
+
+### File Processing Pipeline (Module Namespaces)
+```javascript
+const { file } = require('@rin8n/content-processing-utils');
+
+const url = "https://example.com/podcast.mp3";
+const title = "My Podcast: Episode #1";
+
+const extension = file.extractFileExtension(url, 'audio/mpeg', 'mp3'); // "mp3"
+const filename = file.generateSafeFileName(title, extension);          // "My_Podcast__Episode__1.mp3"
+const isValid = file.validateAudioUrl(url);                            // true
 ```
 
 ### Download Organization

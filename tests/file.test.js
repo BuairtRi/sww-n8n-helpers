@@ -6,10 +6,37 @@ const {
   validateAudioUrl,
   getMimeTypeFromExtension,
   parseContentLength,
-  validateFileSize
+  validateFileSize,
+  file
 } = require('../index');
 
 describe('File Utilities', () => {
+  describe('Module Export Structure', () => {
+    test('should export individual functions', () => {
+      expect(typeof generateSafeFileName).toBe('function');
+      expect(typeof extractFileExtension).toBe('function');
+      expect(typeof validateAudioUrl).toBe('function');
+    });
+
+    test('should export module namespaces', () => {
+      expect(file).toBeDefined();
+      expect(typeof file.generateSafeFileName).toBe('function');
+      expect(typeof file.extractFileExtension).toBe('function');
+      expect(typeof file.validateAudioUrl).toBe('function');
+    });
+
+    test('should have identical functionality in both export styles', () => {
+      // Test that both export styles work the same way
+      const title = 'Test File';
+      const extension = 'mp3';
+      
+      const individualResult = generateSafeFileName(title, extension);
+      const groupedResult = file.generateSafeFileName(title, extension);
+      
+      expect(individualResult).toBe(groupedResult);
+    });
+  });
+
   describe('AUDIO_MIME_TYPES', () => {
     test('should contain common audio MIME types', () => {
       expect(AUDIO_MIME_TYPES['audio/mpeg']).toBe('mp3');
@@ -168,7 +195,7 @@ describe('File Utilities', () => {
 
     test('should parse numeric content length', () => {
       expect(parseContentLength(1024)).toBe(1024);
-      expect(parseContentLength(0)).toBe(null); // Function returns null for falsy values including 0
+      expect(parseContentLength(0)).toBe(0); // Zero is a valid content length (empty file)
     });
 
     test('should return null for invalid input', () => {
