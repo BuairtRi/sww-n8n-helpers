@@ -1,4 +1,10 @@
 {
+  "name": "sww-n8n-helpers",
+  "version": "1.0.0",
+  "description": "A NPM package containing reusable utility functions for use in N8N code nodes, providing common functionality for text processing, data validation, batch operations, and more.",
+  "main": "index.js",
+  "keywords": ["n8n", "utilities", "helpers", "text-processing", "validation", "batch-processing", "sql-sanitization"],
+  "author": "Scott Web Works",
   "license": "MIT",
   "repository": {
     "type": "git",

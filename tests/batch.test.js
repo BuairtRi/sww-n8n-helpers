@@ -4,10 +4,38 @@ const {
   filterAndProcess,
   processItemsParallel,
   aggregateResults,
-  retryFailedItems
+  retryFailedItems,
+  batch // Namespace import
 } = require('../index');
 
 describe('Batch Processing Utilities', () => {
+  describe('Module Import Patterns', () => {
+    test('should support individual function imports', () => {
+      expect(typeof processItemsWithPairing).toBe('function');
+      expect(typeof filterAndProcess).toBe('function');
+      expect(typeof processItemsParallel).toBe('function');
+      expect(typeof aggregateResults).toBe('function');
+      expect(typeof retryFailedItems).toBe('function');
+    });
+
+    test('should support namespace imports', () => {
+      expect(typeof batch).toBe('object');
+      expect(typeof batch.processItemsWithPairing).toBe('function');
+      expect(typeof batch.filterAndProcess).toBe('function');
+      expect(typeof batch.processItemsParallel).toBe('function');
+      expect(typeof batch.aggregateResults).toBe('function');
+      expect(typeof batch.retryFailedItems).toBe('function');
+    });
+
+    test('should have identical function references for both import styles', () => {
+      expect(processItemsWithPairing).toBe(batch.processItemsWithPairing);
+      expect(filterAndProcess).toBe(batch.filterAndProcess);
+      expect(processItemsParallel).toBe(batch.processItemsParallel);
+      expect(aggregateResults).toBe(batch.aggregateResults);
+      expect(retryFailedItems).toBe(batch.retryFailedItems);
+    });
+  });
+
   describe('processItemsWithPairing', () => {
     const mockProcessor = jest.fn((item, index) => ({ processed: true, originalIndex: index, data: item }));
     

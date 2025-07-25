@@ -26,8 +26,9 @@ sww-n8n-helpers/
 
 ## Usage
 
-Import utilities from the main package:
+Import utilities from the main package using either approach:
 
+**Individual function imports (flat namespace):**
 ```javascript
 const {
   parseDurationToSeconds,
@@ -41,7 +42,26 @@ const {
   processItemsWithPairing,
   sanitizeForSQL,
   escapeSqlValue
-} = require('@rin8n/content-processing-utils');
+} = require('sww-n8n-helpers');
+```
+
+**Namespace imports (organized by module):**
+```javascript
+const { duration, file, text, validation, batch, sqlSanitization } = require('sww-n8n-helpers');
+
+// Then use:
+duration.parseDurationToSeconds('1h 30m');
+batch.processItemsWithPairing(items, processor);
+validation.validateRequiredFields(data, ['name', 'email']);
+```
+
+**Mixed approach (common functions + namespaces):**
+```javascript
+const { 
+  processItemsWithPairing,  // Individual import for frequently used
+  batch,                    // Namespace for other batch functions
+  validation 
+} = require('sww-n8n-helpers');
 ```
 
 ## Modules Overview
