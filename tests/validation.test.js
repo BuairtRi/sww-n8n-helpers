@@ -24,7 +24,7 @@ describe('Export Patterns', () => {
     expect(typeof validateRequiredFields).toBe('function');
   });
 
-  test('should support namespace imports', () => {
+  test('should support module namespace imports', () => {
     expect(typeof validation).toBe('object');
     expect(typeof validation.createFallbackChain).toBe('function');
     expect(typeof validation.validateEmail).toBe('function');
@@ -34,7 +34,7 @@ describe('Export Patterns', () => {
   test('should support full module imports', () => {
     expect(typeof utils.createFallbackChain).toBe('function');
     expect(typeof utils.validation.createFallbackChain).toBe('function');
-    expect(typeof utils.modules.validation).toBe('object');
+    expect(typeof utils.validation).toBe('object');
   });
 
   test('should have consistent function behavior across import patterns', () => {

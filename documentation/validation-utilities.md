@@ -8,7 +8,7 @@ Data validation, error handling, and fallback utilities for robust n8n workflows
 // Individual function imports (recommended for most use cases)
 const { createFallbackChain, validateEmail } = require('@rin8n/content-processing-utils');
 
-// Namespace imports for grouped functionality
+// Module namespace imports for grouped functionality
 const { validation } = require('@rin8n/content-processing-utils');
 // Then use: validation.createFallbackChain()
 
@@ -233,7 +233,7 @@ const isValidEmail = validateEmail(email);
 // Result: validation shows missing 'email', but fallback finds 'contact.email'
 ```
 
-### Namespace Import Example
+### Module Namespace Example
 ```javascript
 const { validation } = require('@rin8n/content-processing-utils');
 
