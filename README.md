@@ -26,9 +26,9 @@ sww-n8n-helpers/
 
 ## Usage
 
-Import utilities from the main package using either approach:
+This package supports two import styles to suit different use cases:
 
-**Individual function imports (flat namespace):**
+### Individual Function Import (Recommended for single functions)
 ```javascript
 const {
   parseDurationToSeconds,
@@ -45,25 +45,30 @@ const {
 } = require('sww-n8n-helpers');
 ```
 
-**Namespace imports (organized by module):**
-```javascript
-const { duration, file, text, validation, batch, sqlSanitization } = require('sww-n8n-helpers');
+### Module Import (Recommended for multiple functions from the same module)
 
-// Then use:
-duration.parseDurationToSeconds('1h 30m');
-batch.processItemsWithPairing(items, processor);
-validation.validateRequiredFields(data, ['name', 'email']);
+```javascript
+const {
+  duration,
+  file,
+  text,
+  validation,
+  batch,
+  sqlSanitization
+} = require('@rin8n/content-processing-utils');
+
+// Use: duration.parseDurationToSeconds(), file.extractFileExtension(), etc.
 ```
 
-**Mixed approach (common functions + namespaces):**
-```javascript
-const { 
-  processItemsWithPairing,  // Individual import for frequently used
-  batch,                    // Namespace for other batch functions
-  validation 
-} = require('sww-n8n-helpers');
-```
+### Mixed Import (Use both styles as needed)
 
+```javascript
+const {
+  parseDurationToSeconds,  // Individual function
+  file,                    // Entire file module
+  text                     // Entire text module
+} = require('@rin8n/content-processing-utils');
+```
 ## Modules Overview
 
 - **Duration**: Parse and format duration values in various formats
