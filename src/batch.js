@@ -61,8 +61,8 @@ function processItemsWithN8N($fn) {
       const batchStartIndex = processedCount;
       
       for (let i = 0; i < batch.length; i++) {
-        const itemIndex = batchStartIndex + i;
         const item = batch[i];
+        const itemIndex = item.$itemIndex;
         
         try {
           // Extract node data for this item index
