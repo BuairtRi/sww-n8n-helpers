@@ -1,8 +1,9 @@
 // n8n Code Node: Group Knowledge Source Quality Check Configurations
-// Groups SQL query results by KnowledgeSourceId
+// Groups SQL query results by KnowledgeSourceId using sww-n8n-helpers utilities
+
+const { processItemsWithPairing, validation } = require('sww-n8n-helpers');
 
 const items = $input.all();
-const outputItems = [];
 
 if (items.length === 0) {
     console.log('No items to process');
@@ -11,25 +12,44 @@ if (items.length === 0) {
 
 console.log(`Processing ${items.length} quality check configurations from SQL query`);
 
-// Helper function to format date
+// Helper function to format date using validation utilities
 function formatDate(dateStr) {
     if (!dateStr) return null;
-    try {
-        return new Date(dateStr).toISOString();
-    } catch {
-        return dateStr;
-    }
+    const formatted = validation.validateAndFormatDate(dateStr);
+    return formatted || dateStr; // Return original if validation fails
 }
 
-// Group items by KnowledgeSourceId
-const sourceGroups = {};
+// Helper function to create prompt configuration object with safe fallback chains
+function createPromptConfig(item, promptNumber) {
+    const data = item.json;
 
-for (const item of items) {
+    return {
+        template: validation.createFallbackChain(data, [
+            `Prompt${promptNumber}`,
+            `Prompt${promptNumber}Prompt`
+        ], null),
+        model: validation.createFallbackChain(data, [
+            `Prompt${promptNumber}Model`
+        ], null),
+        modelProvider: validation.createFallbackChain(data, [
+            `Prompt${promptNumber}Provider`,
+            `Prompt${promptNumber}ModelProvider`
+        ], null),
+        temperature: data[`Prompt${promptNumber}Temperature`] ?? null,
+        maxTokens: data[`Prompt${promptNumber}MaxTokens`] ?? null
+    };
+}
+
+// Group items by KnowledgeSourceId using a Map for O(1) lookups
+const sourceGroups = new Map();
+
+// Process all items and group by source ID
+items.forEach(item => {
     const sourceId = item.json.KnowledgeSourceId;
 
-    if (!sourceGroups[sourceId]) {
+    if (!sourceGroups.has(sourceId)) {
         // Initialize group with all the data from first record
-        sourceGroups[sourceId] = {
+        const group = {
             // Core ID
             knowledgeSourceId: sourceId,
 
@@ -57,51 +77,30 @@ for (const item of items) {
                 detect: item.json.Detect
             },
 
-            // Store all 5 prompt configurations
+            // Store all 5 prompt configurations using helper function
             prompts: {
-                prompt1: {
-                    template: item.json.Prompt1,
-                    model: item.json.Prompt1Model,
-                    modelProvider: item.json.Prompt1Provider,
-                    temperature: item.json.Prompt1Temperature,
-                    maxTokens: item.json.Prompt1MaxTokens
-                },
-                prompt2: {
-                    template: item.json.Prompt2,
-                    model: item.json.Prompt2Model,
-                    modelProvider: item.json.Prompt2ModelProvider,
-                    temperature: item.json.Prompt2Temperature,
-                    maxTokens: item.json.Prompt2MaxTokens
-                },
-                prompt3: {
-                    template: item.json.Prompt3Prompt,
-                    model: item.json.Prompt3Model,
-                    modelProvider: item.json.Prompt3ModelProvider,
-                    temperature: item.json.Prompt3Temperature,
-                    maxTokens: item.json.Prompt3MaxTokens
-                },
-                prompt4: {
-                    template: item.json.Prompt4,
-                    model: item.json.Prompt4Model,
-                    modelProvider: item.json.Prompt4ModelProvider,
-                    temperature: item.json.Prompt4Temperature,
-                    maxTokens: item.json.Prompt4MaxTokens
-                },
-                prompt5: {
-                    template: item.json.Prompt5,
-                    model: item.json.Prompt5Model,
-                    modelProvider: item.json.Prompt5ModelProvider,
-                    temperature: item.json.Prompt5Temperature,
-                    maxTokens: item.json.Prompt5MaxTokens
-                }
+                prompt1: createPromptConfig(item, '1'),
+                prompt2: createPromptConfig(item, '2'),
+                prompt3: createPromptConfig(item, '3'),
+                prompt4: createPromptConfig(item, '4'),
+                prompt5: createPromptConfig(item, '5')
             }
         };
-    }
-}
 
-// Convert groups to output items
-let itemIndex = 0;
-for (const [sourceId, group] of Object.entries(sourceGroups)) {
+        sourceGroups.set(sourceId, group);
+    }
+});
+
+// Convert groups to output items using processItemsWithPairing for consistency
+const groupedItems = Array.from(sourceGroups.values()).map((group, index) => ({
+    json: group,
+    index: index
+}));
+
+// Process with pairing and add summary info
+const results = processItemsWithPairing(groupedItems, (item, index) => {
+    const group = item.json;
+
     // Add summary info
     group.summary = {
         knowledgeSourceName: group.knowledgeSource.name,
@@ -111,21 +110,22 @@ for (const [sourceId, group] of Object.entries(sourceGroups)) {
         configuredPrompts: Object.values(group.prompts).filter(p => p.template).length
     };
 
-    outputItems.push({
-        json: group,
-        pairedItem: itemIndex
-    });
-    itemIndex++;
-}
+    return group;
+}, {
+    maintainPairing: true,
+    logErrors: true,
+    stopOnError: false
+});
 
-console.log(`Grouped into ${outputItems.length} Knowledge Source configurations`);
+console.log(`Grouped into ${results.length} Knowledge Source configurations`);
 
-// Log summary
-if (outputItems.length > 0) {
+// Log summary using validation utilities for clean object handling
+if (results.length > 0) {
     console.log('Quality Check Configurations:');
-    outputItems.forEach(item => {
-        console.log(`- ${item.json.summary.knowledgeSourceName} (${item.json.summary.sourceType}): ${item.json.summary.configuredPrompts} prompts configured`);
+    results.forEach(item => {
+        const summary = item.json.summary;
+        console.log(`- ${summary.knowledgeSourceName} (${summary.sourceType}): ${summary.configuredPrompts} prompts configured`);
     });
 }
 
-return outputItems;
+return results;
