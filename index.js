@@ -9,7 +9,7 @@ const validation = require('./src/validation');
 const batch = require('./src/batch');
 const sqlSanitization = require('./src/sql-sanitization');
 
-// Export all functions from all modules
+// Export all functions from all modules (individual imports)
 module.exports = {
   // Duration utilities
   ...duration,
@@ -27,7 +27,25 @@ module.exports = {
   ...batch,
   
   // SQL sanitization utilities
-  ...sqlSanitization
+  ...sqlSanitization,
+  
+  // Module namespace exports (for grouped imports)
+  modules: {
+    duration,
+    file,
+    text,
+    validation,
+    batch,
+    sqlSanitization
+  },
+  
+  // Direct module access
+  duration,
+  file,
+  text,
+  validation,
+  batch,
+  sqlSanitization
 };
 
 // ESM export for modern environments

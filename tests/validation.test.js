@@ -13,6 +13,53 @@ const {
   cleanObject
 } = require('../index');
 
+// Test the new export patterns
+const utils = require('../index');
+const { validation } = require('../index');
+
+describe('Export Patterns', () => {
+  test('should support individual function imports', () => {
+    expect(typeof createFallbackChain).toBe('function');
+    expect(typeof validateEmail).toBe('function');
+    expect(typeof validateRequiredFields).toBe('function');
+  });
+
+  test('should support namespace imports', () => {
+    expect(typeof validation).toBe('object');
+    expect(typeof validation.createFallbackChain).toBe('function');
+    expect(typeof validation.validateEmail).toBe('function');
+    expect(typeof validation.validateRequiredFields).toBe('function');
+  });
+
+  test('should support full module imports', () => {
+    expect(typeof utils.createFallbackChain).toBe('function');
+    expect(typeof utils.validation.createFallbackChain).toBe('function');
+    expect(typeof utils.modules.validation).toBe('object');
+  });
+
+  test('should have consistent function behavior across import patterns', () => {
+    const testObj = { name: 'John', email: 'john@example.com' };
+    
+    // Individual import
+    const result1 = validateEmail(testObj.email);
+    
+    // Namespace import
+    const result2 = validation.validateEmail(testObj.email);
+    
+    // Full module import
+    const result3 = utils.validateEmail(testObj.email);
+    const result4 = utils.validation.validateEmail(testObj.email);
+    
+    expect(result1).toBe(true);
+    expect(result2).toBe(true);
+    expect(result3).toBe(true);
+    expect(result4).toBe(true);
+    expect(result1).toBe(result2);
+    expect(result2).toBe(result3);
+    expect(result3).toBe(result4);
+  });
+});
+
 describe('Validation Utilities', () => {
   describe('createFallbackChain', () => {
     const testObj = {

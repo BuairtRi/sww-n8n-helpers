@@ -2,6 +2,21 @@
 
 Data validation, error handling, and fallback utilities for robust n8n workflows.
 
+## Import Options
+
+```javascript
+// Individual function imports (recommended for most use cases)
+const { createFallbackChain, validateEmail } = require('@rin8n/content-processing-utils');
+
+// Namespace imports for grouped functionality
+const { validation } = require('@rin8n/content-processing-utils');
+// Then use: validation.createFallbackChain()
+
+// Full module import
+const utils = require('@rin8n/content-processing-utils');
+// Then use: utils.createFallbackChain() or utils.validation.validateEmail()
+```
+
 ## Key Functions
 
 ### `createFallbackChain(obj, paths, defaultValue)`
@@ -70,6 +85,23 @@ const withDisplayName = validateEmail('John Doe <john@example.com>', { allowDisp
 // Returns: true
 ```
 
+### `validatePhone(phone, locale)`
+
+Validate and normalize phone numbers.
+
+```javascript
+const { validatePhone } = require('@rin8n/content-processing-utils');
+
+const phone1 = validatePhone('+1234567890');
+// Returns: '+1234567890'
+
+const phone2 = validatePhone('(123) 456-7890');
+// Returns: '1234567890' (cleaned)
+
+const phone3 = validatePhone('123', 'any');
+// Returns: null (too short)
+```
+
 ### `validateAndFormatDate(date, options)`
 
 Validate dates and return ISO format.
@@ -104,6 +136,53 @@ const invalid = validateNumericRange('150', { min: 0, max: 100 });
 // Returns: null (out of range)
 ```
 
+### `validateArray(array, constraints)`
+
+Validate arrays with length and element constraints.
+
+```javascript
+const { validateArray } = require('@rin8n/content-processing-utils');
+
+const numbers = validateArray([1, 2, 3], { minLength: 2, maxLength: 5 });
+// Returns: true
+
+const withValidator = validateArray([1, 2, 3], { 
+  elementValidator: (x) => typeof x === 'number' 
+});
+// Returns: true
+
+const invalid = validateArray([1, 'string'], { 
+  elementValidator: (x) => typeof x === 'number' 
+});
+// Returns: false
+```
+
+### `validateObjectSchema(obj, schema)`
+
+Deep validation of nested object structures.
+
+```javascript
+const { validateObjectSchema } = require('@rin8n/content-processing-utils');
+
+const schema = {
+  name: { required: true, type: 'string' },
+  age: { required: true, type: 'number' },
+  email: { 
+    required: false, 
+    validator: (value) => value.includes('@'),
+    message: 'Invalid email format'
+  }
+};
+
+const user = { name: 'John', age: 30, email: 'john@example.com' };
+const result = validateObjectSchema(user, schema);
+// Returns: { isValid: true, errors: {} }
+
+const invalid = { name: 'John', age: 'thirty' };
+const result2 = validateObjectSchema(invalid, schema);
+// Returns: { isValid: false, errors: { age: 'Expected number, got string' } }
+```
+
 ### `cleanObject(obj, options)`
 
 Remove empty, null, or undefined values.
@@ -118,6 +197,20 @@ const cleaned = cleanObject(messy);
 
 const keepNull = cleanObject(messy, { removeNull: false });
 // Returns: { name: 'John', age: null, active: true }
+```
+
+### `createProcessingError(type, message, context)`
+
+Create standardized error objects for failed processing.
+
+```javascript
+const { createProcessingError } = require('@rin8n/content-processing-utils');
+
+const error = createProcessingError('validation_error', 'Invalid email format', { 
+  field: 'email', 
+  itemIndex: 5 
+});
+// Returns: { _error: { type: 'validation_error', message: '...', timestamp: '...', field: 'email', itemIndex: 5 } }
 ```
 
 ## Integration Examples
@@ -138,6 +231,17 @@ const email = createFallbackChain(userData, ['email', 'contact.email', 'user.ema
 const isValidEmail = validateEmail(email);
 
 // Result: validation shows missing 'email', but fallback finds 'contact.email'
+```
+
+### Namespace Import Example
+```javascript
+const { validation } = require('@rin8n/content-processing-utils');
+
+const userData = { name: 'John', email: 'john@test.com', age: '25' };
+
+const cleaned = validation.cleanObject(userData);
+const validAge = validation.validateNumericRange(cleaned.age, { min: 0, max: 120 });
+const validEmail = validation.validateEmail(cleaned.email);
 ```
 
 ### Form Data Cleaning
