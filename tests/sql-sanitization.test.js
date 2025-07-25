@@ -5,7 +5,15 @@ const {
   validateSanitizedText,
   sanitizeItemsBatch,
   parseFieldList,
-  DEFAULT_FIELD_MAPPINGS
+  DEFAULT_FIELD_MAPPINGS,
+  // Add missing advanced functions
+  escapeSqlValue,
+  escapeSqlIdentifier,
+  formatSqlQuery,
+  createRawSql,
+  escapeSqlValuesBatch,
+  generateInsertStatement,
+  generateUpdateStatement
 } = require('../index');
 
 describe('SQL Sanitization Utilities', () => {
@@ -256,6 +264,187 @@ describe('SQL Sanitization Utilities', () => {
     test('includes topic-specific mappings', () => {
       expect(DEFAULT_FIELD_MAPPINGS.Topic).toEqual({ type: 'title', maxLength: 250 });
       expect(DEFAULT_FIELD_MAPPINGS.PodcastPrompt).toEqual({ type: 'content', maxLength: null });
+    });
+  });
+
+  describe('escapeSqlValue', () => {
+    test('handles null and undefined', () => {
+      expect(escapeSqlValue(null)).toBe('NULL');
+      expect(escapeSqlValue(undefined)).toBe('NULL');
+    });
+
+    test('handles numbers', () => {
+      expect(escapeSqlValue(123)).toBe('123');
+      expect(escapeSqlValue(45.67)).toBe('45.67');
+      expect(escapeSqlValue(-89)).toBe('-89');
+    });
+
+    test('handles booleans', () => {
+      expect(escapeSqlValue(true)).toBe('1');
+      expect(escapeSqlValue(false)).toBe('0');
+    });
+
+    test('handles strings with quotes', () => {
+      expect(escapeSqlValue("O'Reilly")).toBe("'O''Reilly'");
+      expect(escapeSqlValue('Test "quoted" text')).toBe("'Test \"quoted\" text'");
+    });
+
+    test('handles arrays', () => {
+      expect(escapeSqlValue([1, 2, 3])).toBe("1, 2, 3");
+      expect(escapeSqlValue(['a', 'b'])).toBe("'a', 'b'");
+    });
+
+    test('handles dates', () => {
+      const date = new Date('2023-01-01T12:00:00.000Z');
+      expect(escapeSqlValue(date)).toBe("'2023-01-01T12:00:00.000Z'");
+    });
+
+    test('handles Buffer objects', () => {
+      const buffer = Buffer.from('hello');
+      const result = escapeSqlValue(buffer);
+      expect(result).toBe("X'68656c6c6f'");
+    });
+
+    test('handles objects with toSqlString method', () => {
+      const rawSql = { toSqlString: () => 'NOW()' };
+      expect(escapeSqlValue(rawSql)).toBe('NOW()');
+    });
+
+    test('handles regular objects', () => {
+      const obj = { user: 'test' };
+      const result = escapeSqlValue(obj);
+      expect(result).toBe("[user] = '[object Object]'");
+    });
+
+    test('respects includeQuotes option', () => {
+      expect(escapeSqlValue("test", { includeQuotes: false })).toBe('test');
+      expect(escapeSqlValue("test", { includeQuotes: true })).toBe("'test'");
+    });
+  });
+
+  describe('escapeSqlIdentifier', () => {
+    test('escapes basic identifiers', () => {
+      expect(escapeSqlIdentifier('tableName')).toBe('[tableName]');
+      expect(escapeSqlIdentifier('column_name')).toBe('[column_name]');
+    });
+
+    test('handles qualified identifiers with dots', () => {
+      expect(escapeSqlIdentifier('schema.table', true)).toBe('[schema].[table]');
+      expect(escapeSqlIdentifier('db.schema.table', true)).toBe('[db].[schema].[table]');
+    });
+
+    test('handles allowDots parameter', () => {
+      expect(escapeSqlIdentifier('schema.table', false)).toBe('[schema.table]');
+      expect(escapeSqlIdentifier('schema.table', true)).toBe('[schema].[table]');
+    });
+
+    test('handles empty input', () => {
+      expect(escapeSqlIdentifier('')).toBe('');
+      expect(escapeSqlIdentifier(null)).toBe('');
+    });
+  });
+
+  describe('formatSqlQuery', () => {
+    test('formats query with placeholders', () => {
+      const sql = 'SELECT * FROM users WHERE id = ? AND name = ?';
+      const values = [123, 'John'];
+      const result = formatSqlQuery(sql, values);
+      expect(result).toBe("SELECT * FROM users WHERE id = 123 AND name = 'John'");
+    });
+
+    test('handles empty values array', () => {
+      const sql = 'SELECT * FROM users';
+      const result = formatSqlQuery(sql, []);
+      expect(result).toBe('SELECT * FROM users');
+    });
+
+    test('handles null values', () => {
+      const sql = 'SELECT * FROM users WHERE deleted_at = ?';
+      const values = [null];
+      const result = formatSqlQuery(sql, values);
+      expect(result).toBe('SELECT * FROM users WHERE deleted_at = NULL');
+    });
+  });
+
+  describe('createRawSql', () => {
+    test('creates raw SQL object', () => {
+      const rawSql = createRawSql('NOW()');
+      expect(typeof rawSql.toSqlString).toBe('function');
+      expect(rawSql.toSqlString()).toBe('NOW()');
+    });
+
+    test('raw SQL bypasses escaping', () => {
+      const rawSql = createRawSql('GETDATE()');
+      expect(escapeSqlValue(rawSql)).toBe('GETDATE()');
+    });
+  });
+
+  describe('escapeSqlValuesBatch', () => {
+    test('escapes array of values', () => {
+      const values = ['test', 123, null, true];
+      const result = escapeSqlValuesBatch(values);
+      expect(result).toEqual(["'test'", '123', 'NULL', '1']);
+    });
+
+    test('handles empty array', () => {
+      expect(escapeSqlValuesBatch([])).toEqual([]);
+    });
+
+    test('handles non-array input', () => {
+      expect(escapeSqlValuesBatch('not an array')).toEqual([]);
+    });
+
+    test('respects options', () => {
+      const values = ['test1', 'test2'];
+      const result = escapeSqlValuesBatch(values, { includeQuotes: false });
+      expect(result).toEqual(['test1', 'test2']);
+    });
+  });
+
+  describe('generateInsertStatement', () => {
+    test('generates INSERT for single object', () => {
+      const data = { name: "John O'Connor", age: 30 };
+      const result = generateInsertStatement('users', data);
+      expect(result).toBe("INSERT INTO [users] ([name], [age]) VALUES ('John O''Connor', 30)");
+    });
+
+    test('generates bulk INSERT for array', () => {
+      const data = [
+        { name: 'John', age: 30 },
+        { name: 'Jane', age: 25 }
+      ];
+      const result = generateInsertStatement('users', data);
+      expect(result).toBe("INSERT INTO [users] ([name], [age]) VALUES ('John', 30), ('Jane', 25)");
+    });
+
+    test('handles empty array', () => {
+      expect(generateInsertStatement('users', [])).toBe('');
+    });
+
+    test('throws error for missing parameters', () => {
+      expect(() => generateInsertStatement()).toThrow('Table name and data are required');
+      expect(() => generateInsertStatement('users')).toThrow('Table name and data are required');
+    });
+  });
+
+  describe('generateUpdateStatement', () => {
+    test('generates UPDATE statement', () => {
+      const data = { name: "John O'Connor", age: 31 };
+      const whereClause = { id: 123 };
+      const result = generateUpdateStatement('users', data, whereClause);
+      expect(result).toBe("UPDATE [users] SET [name] = 'John O''Connor', [age] = 31 WHERE [id] = 123");
+    });
+
+    test('handles multiple WHERE conditions', () => {
+      const data = { status: 'active' };
+      const whereClause = { department: 'IT', level: 'senior' };
+      const result = generateUpdateStatement('users', data, whereClause);
+      expect(result).toBe("UPDATE [users] SET [status] = 'active' WHERE [department] = 'IT' AND [level] = 'senior'");
+    });
+
+    test('throws error for missing parameters', () => {
+      expect(() => generateUpdateStatement()).toThrow('Table name, data, and where clause are required');
+      expect(() => generateUpdateStatement('users', {})).toThrow('Table name, data, and where clause are required');
     });
   });
 }); 

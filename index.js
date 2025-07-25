@@ -1,5 +1,6 @@
-// @rin8n/content-processing-utils
-// Main entry point - exports all utilities from individual modules
+// sww-n8n-helpers
+// Main entry point - exports all utilities with hybrid approach
+// Supports both individual function imports and module-based imports
 
 // Import all modules from src directory
 const duration = require('./src/duration');
@@ -27,6 +28,22 @@ module.exports = {
   validation,
   batch,
   sqlSanitization
+};
+
+// Export modules as objects (for organized imports)
+const moduleExports = {
+  duration,
+  file,
+  text,
+  validation,
+  batch,
+  sqlSanitization
+};
+
+// Hybrid export: individual functions + modules object
+module.exports = {
+  ...individualExports,
+  modules: moduleExports
 };
 
 // ESM export for modern environments

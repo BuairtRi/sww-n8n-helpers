@@ -62,7 +62,7 @@ function escapeSqlValue(value, options = {}) {
     return 'NULL';
   }
   
-  // Handle numbers - no quotes for numbers by default unless includeQuotes is explicitly true
+  // Handle numbers - never quote numbers in SQL contexts (they are literals)
   if (typeof value === 'number') {
     return String(value);
   }
