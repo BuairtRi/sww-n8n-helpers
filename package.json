@@ -1,0 +1,55 @@
+{
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rin8n/content-processing-utils.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rin8n/content-processing-utils/issues"
+  },
+  "homepage": "https://github.com/rin8n/content-processing-utils#readme",
+  "peerDependencies": {
+    "axios": "1.11.0",
+    "cheerio": "^1.0.0-rc.12",
+    "lodash": "^4.17.21",
+    "parse-duration": "^1.1.0",
+    "sanitize-filename": "^1.6.3",
+    "tsqlstring": "^1.0.1",
+    "validator": "^13.11.0"
+  },
+  "devDependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "jest": "^29.7.0",
+    "lodash": "^4.17.21",
+    "parse-duration": "^1.1.0",
+    "sanitize-filename": "^1.6.3",
+    "tsqlstring": "^1.0.1",
+    "validator": "^13.11.0"
+  },
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "files": [
+    "index.js",
+    "src/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "index.js"
+    ],
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ]
+  }
+}
