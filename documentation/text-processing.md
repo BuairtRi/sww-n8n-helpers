@@ -7,19 +7,22 @@ Clean, manipulate, and extract information from text content including HTML clea
 This module supports two import patterns for maximum flexibility in n8n workflows:
 
 **Individual Function Import (Destructuring):**
+
 ```javascript
-const { cleanHtml, stripMarkdown, countWords } = require('@rin8n/content-processing-utils');
+const { cleanHtml, stripMarkdown, countWords } = require('sww-n8n-helpers');
 ```
 
 **Module Object Import (Organized Access):**
+
 ```javascript
-const { text } = require('@rin8n/content-processing-utils');
+const { text } = require('sww-n8n-helpers');
 // Then use: text.cleanHtml(...), text.stripMarkdown(...), text.countWords(...)
 ```
 
 **Mixed Approach:**
+
 ```javascript
-const { text, validateEmail } = require('@rin8n/content-processing-utils');
+const { text, validateEmail } = require('sww-n8n-helpers');
 // Use text module: text.cleanHtml(...)
 // Use individual function: validateEmail(...)
 ```
@@ -31,14 +34,16 @@ const { text, validateEmail } = require('@rin8n/content-processing-utils');
 Clean HTML content and extract plain text using Cheerio.
 
 **Parameters:**
+
 - `html` (String): HTML content to clean
 - `options` (Object): Cleaning options
   - `removeElements` (Array): Elements to remove (default: ['script', 'style', 'iframe', 'object', 'embed'])
   - `normalizeWhitespace` (Boolean): Normalize whitespace (default: true)
 
 **Example: Clean HTML Content**
+
 ```javascript
-const { cleanHtml, stripMarkdown, truncateWithSeparator } = require('@rin8n/content-processing-utils');
+const { cleanHtml, stripMarkdown, truncateWithSeparator } = require('sww-n8n-helpers');
 
 const html = '<p>Hello <strong>world</strong>!</p><script>alert("bad")</script>';
 const cleaned = cleanHtml(html);
@@ -54,8 +59,9 @@ const truncated = truncateWithSeparator(longText, 30, { omission: '...' });
 ```
 
 **Example: Email Processing**
+
 ```javascript
-const { cleanHtml, truncateWithSeparator } = require('@rin8n/content-processing-utils');
+const { cleanHtml, truncateWithSeparator } = require('sww-n8n-helpers');
 
 const htmlEmail = '<p>Hello <b>customer</b>!</p><style>body{color:red}</style>';
 const plainText = cleanHtml(htmlEmail, { removeElements: ['style', 'script'] });
@@ -66,8 +72,9 @@ const preview = truncateWithSeparator(plainText, 50, { omission: '...' });
 ```
 
 **Example: Email Processing (Module Object Pattern)**
+
 ```javascript
-const { text } = require('@rin8n/content-processing-utils');
+const { text } = require('sww-n8n-helpers');
 
 const htmlEmail = '<p>Hello <b>customer</b>!</p><style>body{color:red}</style>';
 const plainText = text.cleanHtml(htmlEmail, { removeElements: ['style', 'script'] });
@@ -82,13 +89,15 @@ const preview = text.truncateWithSeparator(plainText, 50, { omission: '...' });
 Extract plain text from markdown content.
 
 **Parameters:**
+
 - `markdown` (String): Markdown content
 - `options` (Object): Processing options
   - `preserveLineBreaks` (Boolean): Keep line breaks (default: false)
 
 **Example: Markdown Processing**
+
 ```javascript
-const { stripMarkdown, countWords } = require('@rin8n/content-processing-utils');
+const { stripMarkdown, countWords } = require('sww-n8n-helpers');
 
 const markdown = '# Heading\n\nThis is **bold** and *italic* text.';
 
@@ -107,6 +116,7 @@ const readingTime = Math.ceil(countWords(plainText) / 200);
 Intelligently truncate text respecting word boundaries.
 
 **Parameters:**
+
 - `text` (String): Text to truncate
 - `maxLength` (Number): Maximum length
 - `options` (Object): Truncation options
@@ -114,8 +124,9 @@ Intelligently truncate text respecting word boundaries.
   - `omission` (String): String to append when truncated (default: '...')
 
 **Example: Social Media Content**
+
 ```javascript
-const { truncateWithSeparator } = require('@rin8n/content-processing-utils');
+const { truncateWithSeparator } = require('sww-n8n-helpers');
 
 const longText = "This is a very long article that needs to be adapted for different social media platforms with varying character limits.";
 
@@ -131,14 +142,16 @@ const facebook = truncateWithSeparator(longText, 500, { omission: ' [read more]'
 Generate intelligent excerpts from text content.
 
 **Parameters:**
+
 - `text` (String): Text to excerpt
 - `maxLength` (Number): Maximum excerpt length (default: 200)
 - `options` (Object): Excerpt options
   - `completeSentences` (Boolean): End on complete sentences (default: true)
 
 **Example: Generate Smart Excerpts**
+
 ```javascript
-const { generateExcerpt, countWords, normalizeText } = require('@rin8n/content-processing-utils');
+const { generateExcerpt, countWords, normalizeText } = require('sww-n8n-helpers');
 
 const article = "This is the first sentence. This is the second sentence. This continues for much longer.";
 
@@ -160,8 +173,9 @@ const normalized = normalizeText("Weird   spacing  and "curly" quotes");
 Analyze text structure and content.
 
 **Example: Text Analysis**
+
 ```javascript
-const { countWords, extractSentences } = require('@rin8n/content-processing-utils');
+const { countWords, extractSentences } = require('sww-n8n-helpers');
 
 const text = "This is sentence one. This is sentence two. Here's a third sentence.";
 
@@ -180,8 +194,9 @@ const readingTime = Math.ceil(wordCount / 200); // Assuming 200 WPM
 Normalize text by fixing common formatting issues.
 
 **Example: Text Normalization**
+
 ```javascript
-const { normalizeText, basicSanitizeForSQL } = require('@rin8n/content-processing-utils');
+const { normalizeText, basicSanitizeForSQL } = require('sww-n8n-helpers');
 
 const messy = "Weird   spacing  and "curly" quotes";
 const normalized = normalizeText(messy, { removeExtraSpaces: true, normalizeQuotes: true });
@@ -194,6 +209,7 @@ const sqlSafe = basicSanitizeForSQL("O'Reilly's book");
 ## Usage Patterns
 
 ### Multi-format Content Processing
+
 ```javascript
 // Handle different content formats
 const htmlContent = "<p>Hello <b>world</b>!</p>";
@@ -204,9 +220,10 @@ const fromMarkdown = stripMarkdown(markdownContent); // "Title Bold text"
 ```
 
 ### Organized n8n Workflow Processing
+
 ```javascript
 // Using module objects for cleaner n8n node organization
-const { text, validation } = require('@rin8n/content-processing-utils');
+const { text, validation } = require('sww-n8n-helpers');
 
 // Text processing pipeline
 const processContent = (rawContent) => {
@@ -224,8 +241,9 @@ const content = processContent('<p>Your HTML content here</p>');
 ```
 
 ### Web Scraping Cleanup
+
 ```javascript
-const { cleanHtml, normalizeText, extractSentences } = require('@rin8n/content-processing-utils');
+const { cleanHtml, normalizeText, extractSentences } = require('sww-n8n-helpers');
 
 const scrapedHtml = '<nav>Menu</nav><article><h1>Title</h1><p>Content here.</p></article>';
 
@@ -239,8 +257,9 @@ const sentences = extractSentences(cleanContent);
 ```
 
 ### Content Format Conversion
+
 ```javascript
-const { cleanHtml, stripMarkdown, generateExcerpt } = require('@rin8n/content-processing-utils');
+const { cleanHtml, stripMarkdown, generateExcerpt } = require('sww-n8n-helpers');
 
 // Auto-detect and convert different content formats
 function convertToPlainText(content) {
@@ -271,8 +290,9 @@ const excerpt = generateExcerpt(plainText, 100);      // Smart excerpt
 ## Common Text Processing Workflows
 
 ### Content Preparation for Database
+
 ```javascript
-const { cleanHtml, normalizeText, basicSanitizeForSQL } = require('@rin8n/content-processing-utils');
+const { cleanHtml, normalizeText, basicSanitizeForSQL } = require('sww-n8n-helpers');
 
 // Clean → Normalize → Sanitize pipeline
 const content = cleanHtml(rawHtml);
@@ -281,8 +301,9 @@ const sqlSafe = basicSanitizeForSQL(normalized);
 ```
 
 ### Social Media Content Creation
+
 ```javascript
-const { truncateWithSeparator, generateExcerpt } = require('@rin8n/content-processing-utils');
+const { truncateWithSeparator, generateExcerpt } = require('sww-n8n-helpers');
 
 // Different platforms, different requirements
 const twitterPost = truncateWithSeparator(content, 280);
@@ -291,8 +312,9 @@ const excerpt = generateExcerpt(content, 200);
 ```
 
 ### Content Analysis and Metrics
+
 ```javascript
-const { countWords, extractSentences } = require('@rin8n/content-processing-utils');
+const { countWords, extractSentences } = require('sww-n8n-helpers');
 
 // Analyze content quality and structure
 const wordCount = countWords(content);
@@ -300,4 +322,4 @@ const sentences = extractSentences(content);
 const readingTime = Math.ceil(wordCount / 200);
 ```
 
-All functions handle edge cases gracefully and return null for invalid input, making them safe to use in production n8n workflows. 
+All functions handle edge cases gracefully and return null for invalid input, making them safe to use in production n8n workflows.

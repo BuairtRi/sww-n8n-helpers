@@ -29,6 +29,7 @@ sww-n8n-helpers/
 This package supports two import styles to suit different use cases:
 
 ### Individual Function Import (Recommended for single functions)
+
 ```javascript
 const {
   parseDurationToSeconds,
@@ -55,7 +56,7 @@ const {
   validation,
   batch,
   sqlSanitization
-} = require('@rin8n/content-processing-utils');
+} = require('sww-n8n-helpers');
 
 // Use: duration.parseDurationToSeconds(), file.extractFileExtension(), etc.
 ```
@@ -67,8 +68,9 @@ const {
   parseDurationToSeconds,  // Individual function
   file,                    // Entire file module
   text                     // Entire text module
-} = require('@rin8n/content-processing-utils');
+} = require('sww-n8n-helpers');
 ```
+
 ## Modules Overview
 
 - **Duration**: Parse and format duration values in various formats

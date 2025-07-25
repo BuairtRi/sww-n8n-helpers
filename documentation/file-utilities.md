@@ -7,19 +7,22 @@ Comprehensive file and media handling utilities for generating safe filenames, v
 The module supports both individual function imports and module namespace imports:
 
 **Individual Function Imports:**
+
 ```javascript
-const { generateSafeFileName, extractFileExtension } = require('@rin8n/content-processing-utils');
+const { generateSafeFileName, extractFileExtension } = require('sww-n8n-helpers');
 ```
 
 **Module Namespace Imports:**
+
 ```javascript
-const { file } = require('@rin8n/content-processing-utils');
+const { file } = require('sww-n8n-helpers');
 // Now use: file.generateSafeFileName(), file.extractFileExtension(), etc.
 ```
 
 **Full Module Import:**
+
 ```javascript
-const utils = require('@rin8n/content-processing-utils');
+const utils = require('sww-n8n-helpers');
 // Individual functions: utils.generateSafeFileName()
 // Module namespaces: utils.file.generateSafeFileName()
 ```
@@ -31,6 +34,7 @@ const utils = require('@rin8n/content-processing-utils');
 Generate safe, cross-platform filenames from titles.
 
 **Parameters:**
+
 - `title` (String): Title to convert to filename
 - `fileExtension` (String): File extension without dot
 - `options` (Object): Generation options
@@ -39,8 +43,9 @@ Generate safe, cross-platform filenames from titles.
   - `fallbackName` (String): Name to use if title is empty (default: 'episode')
 
 **Example: Generate Safe Filenames**
+
 ```javascript
-const { generateSafeFileName, extractFileExtension } = require('@rin8n/content-processing-utils');
+const { generateSafeFileName, extractFileExtension } = require('sww-n8n-helpers');
 
 const title = "My Podcast: Episode #1 (2024/01/15)";
 const safeFilename = generateSafeFileName(title, 'mp3');
@@ -58,8 +63,9 @@ const truncated = generateSafeFileName("Very long title...", 'mp3', { maxLength:
 ```
 
 **Example: Filename Variations**
+
 ```javascript
-const { generateSafeFileName } = require('@rin8n/content-processing-utils');
+const { generateSafeFileName } = require('sww-n8n-helpers');
 
 const title = "My Important Document: Final Version!";
 
@@ -78,13 +84,15 @@ const timestamped = generateSafeFileName(`${title}_2024-01-15`, 'pdf');
 Extract file extension from URL or determine from MIME type.
 
 **Parameters:**
+
 - `audioUrl` (String): File URL
 - `mimeType` (String): MIME type of the file
 - `defaultExtension` (String): Default extension if none found (default: 'mp3')
 
 **Example: URL and File Validation**
+
 ```javascript
-const { validateAudioUrl, parseContentLength, validateFileSize } = require('@rin8n/content-processing-utils');
+const { validateAudioUrl, parseContentLength, validateFileSize } = require('sww-n8n-helpers');
 
 const validUrl = validateAudioUrl("https://example.com/song.mp3");
 // Returns: true (URL points to audio file)
@@ -107,12 +115,14 @@ const validSize = validateFileSize(1048576, { minSize: 1024, maxSize: 10485760 }
 Validate if URL points to an audio/media file.
 
 **Parameters:**
+
 - `url` (String): URL to validate
 - `allowedExtensions` (Array): Allowed file extensions (default: ['mp3', 'm4a', 'wav', 'ogg', 'aac'])
 
 **Example: Content Validation**
+
 ```javascript
-const { validateAudioUrl, validateFileSize } = require('@rin8n/content-processing-utils');
+const { validateAudioUrl, validateFileSize } = require('sww-n8n-helpers');
 
 const audioUrl = "https://example.com/song.mp3";
 const contentLength = "5242880"; // 5MB
@@ -132,8 +142,9 @@ const isValidSize = validateFileSize(parseInt(contentLength), {
 Get MIME type from file extension.
 
 **Example: HTTP Headers**
+
 ```javascript
-const { getMimeTypeFromExtension } = require('@rin8n/content-processing-utils');
+const { getMimeTypeFromExtension } = require('sww-n8n-helpers');
 
 const filename = "audio-file.mp3";
 const extension = filename.split('.').pop(); // "mp3"
@@ -153,8 +164,9 @@ Handle file size validation and parsing.
 **Note**: `parseContentLength(0)` returns `0` (not `null`) as zero is a valid content length for empty files.
 
 **Example: Download Decisions**
+
 ```javascript
-const { parseContentLength, validateFileSize } = require('@rin8n/content-processing-utils');
+const { parseContentLength, validateFileSize } = require('sww-n8n-helpers');
 
 const contentLength = "5242880"; // 5MB
 const filename = "podcast.mp3";
@@ -173,8 +185,9 @@ const shouldDownload = validateFileSize(sizeInBytes, limits);
 ## Usage Patterns
 
 ### File Processing Pipeline (Individual Functions)
+
 ```javascript
-const { extractFileExtension, generateSafeFileName, validateAudioUrl } = require('@rin8n/content-processing-utils');
+const { extractFileExtension, generateSafeFileName, validateAudioUrl } = require('sww-n8n-helpers');
 
 const url = "https://example.com/podcast.mp3";
 const title = "My Podcast: Episode #1";
@@ -185,8 +198,9 @@ const isValid = validateAudioUrl(url);                            // true
 ```
 
 ### File Processing Pipeline (Module Namespaces)
+
 ```javascript
-const { file } = require('@rin8n/content-processing-utils');
+const { file } = require('sww-n8n-helpers');
 
 const url = "https://example.com/podcast.mp3";
 const title = "My Podcast: Episode #1";
@@ -197,6 +211,7 @@ const isValid = file.validateAudioUrl(url);                            // true
 ```
 
 ### Download Organization
+
 ```javascript
 const title = "My Document (2024)";
 const filename = generateSafeFileName(title, 'pdf');
@@ -220,6 +235,7 @@ return downloadQueue;
 ```
 
 ### File Organization
+
 ```javascript
 const filename = "My Song.mp3";
 const extension = filename.split('.').pop(); // "mp3"
@@ -263,6 +279,7 @@ const AUDIO_MIME_TYPES = {
 ## Common Issues and Solutions
 
 ### Invalid Characters in Filenames
+
 ```javascript
 // BAD: Direct use of title
 const filename = `${episode.title}.mp3`; // May contain invalid chars
@@ -272,6 +289,7 @@ const filename = generateSafeFileName(episode.title, 'mp3');
 ```
 
 ### Missing File Extensions
+
 ```javascript
 // Extract extension with fallbacks
 const extension = extractFileExtension(url, mimeType, 'mp3');
@@ -279,6 +297,7 @@ const extension = extractFileExtension(url, mimeType, 'mp3');
 ```
 
 ### File Size Validation
+
 ```javascript
 // Check size before processing
 const sizeInBytes = parseContentLength(contentLength);
@@ -288,4 +307,4 @@ if (!isValidSize) {
   // Handle oversized or invalid files
   return { json: { error: 'File too large', skipDownload: true } };
 }
-``` 
+```

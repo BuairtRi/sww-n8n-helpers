@@ -5,19 +5,22 @@ Parse and format time durations in various formats, perfect for handling time-ba
 ## Import Options
 
 **Individual Function Import (Recommended for single functions):**
+
 ```javascript
-const { parseDurationToSeconds, formatFriendlyDuration } = require('@rin8n/content-processing-utils');
+const { parseDurationToSeconds, formatFriendlyDuration } = require('sww-n8n-helpers');
 ```
 
 **Module Import (Recommended for multiple functions):**
+
 ```javascript
-const { duration } = require('@rin8n/content-processing-utils');
+const { duration } = require('sww-n8n-helpers');
 // Use: duration.parseDurationToSeconds(), duration.formatFriendlyDuration(), etc.
 ```
 
 **Mixed Import:**
+
 ```javascript
-const { parseDurationToSeconds, duration } = require('@rin8n/content-processing-utils');
+const { parseDurationToSeconds, duration } = require('sww-n8n-helpers');
 // Use both: parseDurationToSeconds() and duration.getDurationStats()
 ```
 
@@ -28,20 +31,23 @@ const { parseDurationToSeconds, duration } = require('@rin8n/content-processing-
 Parse various duration formats into seconds.
 
 **Supported Formats:**
+
 - Human readable: "2 hours 30 minutes", "1h 30m", "90 minutes"
 - Time format: "2:30:15" (HH:MM:SS), "1:30" (MM:SS)
 - Numbers: 3600 (assumed seconds)
 - Various units: "2h", "30min", "45s"
 
 **Parameters:**
+
 - `duration` (String|Number): Duration in various formats
 - `options` (Object): Parsing options
   - `strict` (Boolean): Return null for invalid formats (default: false)
 
 **Example: Parse Various Duration Formats**
+
 ```javascript
 // Individual function import
-const { parseDurationToSeconds } = require('@rin8n/content-processing-utils');
+const { parseDurationToSeconds } = require('sww-n8n-helpers');
 
 const duration1 = parseDurationToSeconds("2:30:15");
 // Returns: 9015 (2 hours, 30 minutes, 15 seconds)
@@ -60,9 +66,10 @@ const invalid = parseDurationToSeconds("invalid", { strict: true });
 ```
 
 **Example: Using Module Import**
+
 ```javascript
 // Module import
-const { duration } = require('@rin8n/content-processing-utils');
+const { duration } = require('sww-n8n-helpers');
 
 const seconds = duration.parseDurationToSeconds("2:30:15");
 // Returns: 9015
@@ -72,8 +79,9 @@ const strict = duration.parseDurationToSeconds("invalid", { strict: true });
 ```
 
 **Example: Strict Validation**
+
 ```javascript
-const { parseDurationToSeconds } = require('@rin8n/content-processing-utils');
+const { parseDurationToSeconds } = require('sww-n8n-helpers');
 
 const validDuration = parseDurationToSeconds("2:30", { strict: true });
 // Returns: 150 (valid format)
@@ -90,14 +98,16 @@ const lenientParsing = parseDurationToSeconds("invalid", { strict: false });
 Convert seconds to human-readable duration strings.
 
 **Parameters:**
+
 - `seconds` (Number): Duration in seconds
 - `options` (Object): Formatting options
   - `includeSeconds` (Boolean): Include seconds in output (default: false)
   - `format` (String): 'long' or 'short' format (default: 'long')
 
 **Example: Format Friendly Durations**
+
 ```javascript
-const { formatFriendlyDuration } = require('@rin8n/content-processing-utils');
+const { formatFriendlyDuration } = require('sww-n8n-helpers');
 
 const friendly = formatFriendlyDuration(9015);
 // Returns: "2 hours and 30 minutes" (default long format)
@@ -117,13 +127,15 @@ const minutesOnly = formatFriendlyDuration(1800);
 Convert seconds to HH:MM:SS time format.
 
 **Parameters:**
+
 - `seconds` (Number): Duration in seconds
 - `options` (Object): Formatting options
   - `alwaysShowHours` (Boolean): Always show hours even if 0 (default: false)
 
 **Example: Time Code Generation**
+
 ```javascript
-const { convertSecondsToHHMMSS } = require('@rin8n/content-processing-utils');
+const { convertSecondsToHHMMSS } = require('sww-n8n-helpers');
 
 const duration1 = convertSecondsToHHMMSS(9015);
 // Returns: "02:30:15" (2 hours 30 minutes 15 seconds)
@@ -143,8 +155,9 @@ const chapters = [{ start: 0 }, { start: 1800 }].map(ch => convertSecondsToHHMMS
 Validate if a duration string is in a supported format.
 
 **Example: Format Validation**
+
 ```javascript
-const { isValidDurationFormat } = require('@rin8n/content-processing-utils');
+const { isValidDurationFormat } = require('sww-n8n-helpers');
 
 const formats = ["2:30", "1h 30m", "90 minutes", "invalid", "3600"];
 
@@ -167,8 +180,9 @@ const validationResults = formats.map(format => ({
 Calculate statistics from an array of duration values.
 
 **Example: Duration Statistics**
+
 ```javascript
-const { getDurationStats } = require('@rin8n/content-processing-utils');
+const { getDurationStats } = require('sww-n8n-helpers');
 
 const durations = ["1:30", "2:45:30", "45min", "invalid", "3600"];
 const stats = getDurationStats(durations);
@@ -187,8 +201,9 @@ const stats = getDurationStats(durations);
 ## Usage Patterns
 
 ### Duration Categorization
+
 ```javascript
-const { duration } = require('@rin8n/content-processing-utils');
+const { duration } = require('sww-n8n-helpers');
 
 const seconds = duration.parseDurationToSeconds("1:30:45"); // 5445 seconds
 const category = seconds < 900 ? 'short' : seconds < 3600 ? 'medium' : 'long';
@@ -196,8 +211,9 @@ const category = seconds < 900 ? 'short' : seconds < 3600 ? 'medium' : 'long';
 ```
 
 ### Content Filtering
+
 ```javascript
-const { parseDurationToSeconds } = require('@rin8n/content-processing-utils');
+const { parseDurationToSeconds } = require('sww-n8n-helpers');
 
 const durations = ["0:30", "1:45", "2:30:00"];
 const longContent = durations.filter(d => parseDurationToSeconds(d) > 3600);
@@ -205,8 +221,9 @@ const longContent = durations.filter(d => parseDurationToSeconds(d) > 3600);
 ```
 
 ### Database Preparation
+
 ```javascript
-const { duration } = require('@rin8n/content-processing-utils');
+const { duration } = require('sww-n8n-helpers');
 
 const durationStr = "1:30:45";
 const seconds = duration.parseDurationToSeconds(durationStr); // 5445
@@ -220,8 +237,9 @@ const dbRecord = {
 ```
 
 ### YouTube API Integration
+
 ```javascript
-const { parseDurationToSeconds, formatFriendlyDuration } = require('@rin8n/content-processing-utils');
+const { parseDurationToSeconds, formatFriendlyDuration } = require('sww-n8n-helpers');
 
 // Convert YouTube ISO 8601 duration (PT1H30M15S) to human format
 function parseYouTubeDuration(iso8601) {
@@ -253,8 +271,9 @@ const friendly = formatFriendlyDuration(seconds);          // "1 hour and 30 min
 ## Error Handling
 
 Duration parsing fails gracefully:
+
 ```javascript
-const { parseDurationToSeconds } = require('@rin8n/content-processing-utils');
+const { parseDurationToSeconds } = require('sww-n8n-helpers');
 
 const result = parseDurationToSeconds("invalid duration");
 // Returns: 0 (non-strict mode)
@@ -266,4 +285,4 @@ const result2 = parseDurationToSeconds("2:30");
 // Returns: 150 (2 minutes 30 seconds)
 ```
 
-Always check for null returns when using parsed durations in calculations or storage operations. 
+Always check for null returns when using parsed durations in calculations or storage operations.

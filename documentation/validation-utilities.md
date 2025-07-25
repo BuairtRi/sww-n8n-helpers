@@ -6,14 +6,14 @@ Data validation, error handling, and fallback utilities for robust n8n workflows
 
 ```javascript
 // Individual function imports (recommended for most use cases)
-const { createFallbackChain, validateEmail } = require('@rin8n/content-processing-utils');
+const { createFallbackChain, validateEmail } = require('sww-n8n-helpers');
 
 // Module namespace imports for grouped functionality
-const { validation } = require('@rin8n/content-processing-utils');
+const { validation } = require('sww-n8n-helpers');
 // Then use: validation.createFallbackChain()
 
 // Full module import
-const utils = require('@rin8n/content-processing-utils');
+const utils = require('sww-n8n-helpers');
 // Then use: utils.createFallbackChain() or utils.validation.validateEmail()
 ```
 
@@ -24,7 +24,7 @@ const utils = require('@rin8n/content-processing-utils');
 Try multiple property paths until one succeeds.
 
 ```javascript
-const { createFallbackChain } = require('@rin8n/content-processing-utils');
+const { createFallbackChain } = require('sww-n8n-helpers');
 
 const data = { user: { profile: { name: 'John' } }, title: null };
 
@@ -40,7 +40,7 @@ const email = createFallbackChain(data, ['email', 'user.email'], 'no-email@examp
 Check if required fields exist and are not empty.
 
 ```javascript
-const { validateRequiredFields } = require('@rin8n/content-processing-utils');
+const { validateRequiredFields } = require('sww-n8n-helpers');
 
 const user = { name: 'John', email: '', age: 25 };
 
@@ -56,7 +56,7 @@ const result2 = validateRequiredFields(user, ['name', 'age']);
 Validate and extract clean URLs.
 
 ```javascript
-const { validateAndExtractUrl } = require('@rin8n/content-processing-utils');
+const { validateAndExtractUrl } = require('sww-n8n-helpers');
 
 const url1 = validateAndExtractUrl('https://example.com/path');
 // Returns: 'https://example.com/path'
@@ -73,7 +73,7 @@ const url3 = validateAndExtractUrl('https://example.com', ['https', 'ftp']);
 Validate email addresses with options.
 
 ```javascript
-const { validateEmail } = require('@rin8n/content-processing-utils');
+const { validateEmail } = require('sww-n8n-helpers');
 
 const valid = validateEmail('user@example.com');
 // Returns: true
@@ -90,7 +90,7 @@ const withDisplayName = validateEmail('John Doe <john@example.com>', { allowDisp
 Validate and normalize phone numbers.
 
 ```javascript
-const { validatePhone } = require('@rin8n/content-processing-utils');
+const { validatePhone } = require('sww-n8n-helpers');
 
 const phone1 = validatePhone('+1234567890');
 // Returns: '+1234567890'
@@ -107,7 +107,7 @@ const phone3 = validatePhone('123', 'any');
 Validate dates and return ISO format.
 
 ```javascript
-const { validateAndFormatDate } = require('@rin8n/content-processing-utils');
+const { validateAndFormatDate } = require('sww-n8n-helpers');
 
 const date1 = validateAndFormatDate('2024-01-15');
 // Returns: '2024-01-15T00:00:00.000Z'
@@ -124,7 +124,7 @@ const date3 = validateAndFormatDate('1800-01-01', { strict: true });
 Validate numbers within specified ranges.
 
 ```javascript
-const { validateNumericRange } = require('@rin8n/content-processing-utils');
+const { validateNumericRange } = require('sww-n8n-helpers');
 
 const age = validateNumericRange('25', { min: 0, max: 120 });
 // Returns: 25
@@ -141,7 +141,7 @@ const invalid = validateNumericRange('150', { min: 0, max: 100 });
 Validate arrays with length and element constraints.
 
 ```javascript
-const { validateArray } = require('@rin8n/content-processing-utils');
+const { validateArray } = require('sww-n8n-helpers');
 
 const numbers = validateArray([1, 2, 3], { minLength: 2, maxLength: 5 });
 // Returns: true
@@ -162,7 +162,7 @@ const invalid = validateArray([1, 'string'], {
 Deep validation of nested object structures.
 
 ```javascript
-const { validateObjectSchema } = require('@rin8n/content-processing-utils');
+const { validateObjectSchema } = require('sww-n8n-helpers');
 
 const schema = {
   name: { required: true, type: 'string' },
@@ -188,7 +188,7 @@ const result2 = validateObjectSchema(invalid, schema);
 Remove empty, null, or undefined values.
 
 ```javascript
-const { cleanObject } = require('@rin8n/content-processing-utils');
+const { cleanObject } = require('sww-n8n-helpers');
 
 const messy = { name: 'John', email: '', age: null, active: true, notes: undefined };
 
@@ -204,7 +204,7 @@ const keepNull = cleanObject(messy, { removeNull: false });
 Create standardized error objects for failed processing.
 
 ```javascript
-const { createProcessingError } = require('@rin8n/content-processing-utils');
+const { createProcessingError } = require('sww-n8n-helpers');
 
 const error = createProcessingError('validation_error', 'Invalid email format', { 
   field: 'email', 
@@ -216,8 +216,9 @@ const error = createProcessingError('validation_error', 'Invalid email format', 
 ## Integration Examples
 
 ### Data Validation Pipeline
+
 ```javascript
-const { validateRequiredFields, validateEmail, createFallbackChain } = require('@rin8n/content-processing-utils');
+const { validateRequiredFields, validateEmail, createFallbackChain } = require('sww-n8n-helpers');
 
 const userData = { firstName: 'John', contact: { email: 'john@example.com' } };
 
@@ -234,8 +235,9 @@ const isValidEmail = validateEmail(email);
 ```
 
 ### Module Namespace Example
+
 ```javascript
-const { validation } = require('@rin8n/content-processing-utils');
+const { validation } = require('sww-n8n-helpers');
 
 const userData = { name: 'John', email: 'john@test.com', age: '25' };
 
@@ -245,8 +247,9 @@ const validEmail = validation.validateEmail(cleaned.email);
 ```
 
 ### Form Data Cleaning
+
 ```javascript
-const { cleanObject, validateNumericRange, validateEmail } = require('@rin8n/content-processing-utils');
+const { cleanObject, validateNumericRange, validateEmail } = require('sww-n8n-helpers');
 
 const formData = { name: 'John', email: 'john@test.com', age: '25', notes: '', active: 'true' };
 
@@ -260,8 +263,9 @@ const validEmail = validateEmail(cleaned.email);
 ## Error Handling
 
 All validation functions return predictable types:
+
 - `null` for invalid/missing data
 - `false` for boolean validations
 - Objects with `isValid` property for complex validations
 
-This makes them safe to use in n8n expressions and conditional logic. 
+This makes them safe to use in n8n expressions and conditional logic.

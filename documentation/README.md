@@ -19,15 +19,16 @@ In your n8n Code node, import the utilities:
 
 ```javascript
 // Import specific modules
-const { processItemsWithPairing, sanitizeForSQL, validateEmail } = require('@rin8n/content-processing-utils');
+const { processItemsWithPairing, sanitizeForSQL, validateEmail } = require('sww-n8n-helpers');
 
 // Or import the entire library
-const utils = require('@rin8n/content-processing-utils');
+const utils = require('sww-n8n-helpers');
 ```
 
 ## Quick Start Examples
 
 ### Basic Batch Processing
+
 ```javascript
 const items = [{ json: { title: 'hello' } }, { json: { title: 'world' } }];
 const results = processItemsWithPairing(items, (item) => {
@@ -37,6 +38,7 @@ const results = processItemsWithPairing(items, (item) => {
 ```
 
 ### SQL-Safe Data Processing
+
 ```javascript
 const userInput = "O'Reilly's \"Book\"";
 const safe = sanitizeForSQL(userInput);
@@ -44,6 +46,7 @@ const safe = sanitizeForSQL(userInput);
 ```
 
 ### Combined Processing
+
 ```javascript
 const title = "My Article: Special \"Chars\"";
 const email = "USER@EXAMPLE.COM";
@@ -58,6 +61,7 @@ const filename = generateSafeFileName(title, 'txt');
 ## Common Usage Patterns
 
 ### SQL Sanitization
+
 ```javascript
 const title = sanitizeByFieldType("Breaking News!", 'title');
 const content = sanitizeByFieldType("<p>Content</p>", 'content');
@@ -65,6 +69,7 @@ const content = sanitizeByFieldType("<p>Content</p>", 'content');
 ```
 
 ### Data Processing
+
 ```javascript
 const duration = parseDurationToSeconds("1:30:45"); // Returns: 5445
 const filename = generateSafeFileName("My File: Special/Chars", 'mp3'); // Returns: "My_File__Special_Chars.mp3"
@@ -74,9 +79,10 @@ const cleaned = cleanHtml("<p>Hello <b>world</b>!</p>"); // Returns: "Hello worl
 ## Error Handling Strategy
 
 All modules follow consistent error handling patterns:
+
 - Failed items return `_error` objects with details
 - Item pairing is maintained for traceability
 - Processing continues despite individual failures
 - Comprehensive logging for debugging
 
-See individual module documentation for detailed usage examples and API references. 
+See individual module documentation for detailed usage examples and API references.
