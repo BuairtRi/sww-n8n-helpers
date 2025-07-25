@@ -9,14 +9,14 @@ The module supports both individual function imports and module namespace import
 **Individual Function Imports:**
 
 ```javascript
-const { generateSafeFileName, extractFileExtension } = require('sww-n8n-helpers');
+const { generateSafeFileName, extractFileExtension, formatFileSize } = require('sww-n8n-helpers');
 ```
 
 **Module Namespace Imports:**
 
 ```javascript
 const { file } = require('sww-n8n-helpers');
-// Now use: file.generateSafeFileName(), file.extractFileExtension(), etc.
+// Now use: file.generateSafeFileName(), file.extractFileExtension(), file.formatFileSize(), etc.
 ```
 
 **Full Module Import:**
@@ -182,19 +182,75 @@ const shouldDownload = validateFileSize(sizeInBytes, limits);
 // Returns: true (5MB MP3 is within 50MB limit)
 ```
 
+### `formatFileSize(bytes, options)`
+
+Format file size in bytes to human-readable format.
+
+**Parameters:**
+
+- `bytes` (Number): File size in bytes
+- `options` (Object): Formatting options
+  - `precision` (Number): Decimal places (default: 1)
+  - `units` (Array): Array of unit names (default: ['B', 'KB', 'MB', 'GB', 'TB'])
+
+**Returns:** String with formatted file size (empty string for 0 or invalid input)
+
+**Example: Display File Sizes**
+
+```javascript
+const { formatFileSize, parseContentLength } = require('sww-n8n-helpers');
+
+// Parse and format content lengths
+const sizes = ['1024', '1536000', '52428800', '0', null];
+
+sizes.forEach(size => {
+  const bytes = parseContentLength(size);
+  const formatted = formatFileSize(bytes);
+  console.log(`${size} -> ${bytes} bytes -> ${formatted}`);
+});
+
+// Output:
+// 1024 -> 1024 bytes -> 1.0 KB
+// 1536000 -> 1536000 bytes -> 1.5 MB
+// 52428800 -> 52428800 bytes -> 50.0 MB
+// 0 -> 0 bytes -> (empty string)
+// null -> null bytes -> (empty string)
+```
+
+**Example: Custom Formatting**
+
+```javascript
+// Custom precision and units
+const fileSize = 1536000; // 1.5MB
+
+const detailed = formatFileSize(fileSize, { precision: 2 });
+// "1.46 MB"
+
+const simple = formatFileSize(fileSize, { precision: 0 });
+// "1 MB"
+
+const customUnits = formatFileSize(fileSize, { 
+  units: ['bytes', 'kilobytes', 'megabytes'] 
+});
+// "1.5 megabytes"
+```
+
 ## Usage Patterns
 
 ### File Processing Pipeline (Individual Functions)
 
 ```javascript
-const { extractFileExtension, generateSafeFileName, validateAudioUrl } = require('sww-n8n-helpers');
+const { extractFileExtension, generateSafeFileName, validateAudioUrl, parseContentLength, formatFileSize } = require('sww-n8n-helpers');
 
 const url = "https://example.com/podcast.mp3";
 const title = "My Podcast: Episode #1";
+const contentLength = "15728640"; // 15MB
 
 const extension = extractFileExtension(url, 'audio/mpeg', 'mp3'); // "mp3"
 const filename = generateSafeFileName(title, extension);          // "My_Podcast__Episode__1.mp3"
 const isValid = validateAudioUrl(url);                            // true
+const sizeBytes = parseContentLength(contentLength);             // 15728640
+const readableSize = formatFileSize(sizeBytes);                  // "15.0 MB"
 ```
 
 ### File Processing Pipeline (Module Namespaces)
@@ -204,10 +260,13 @@ const { file } = require('sww-n8n-helpers');
 
 const url = "https://example.com/podcast.mp3";
 const title = "My Podcast: Episode #1";
+const contentLength = "15728640";
 
 const extension = file.extractFileExtension(url, 'audio/mpeg', 'mp3'); // "mp3"
 const filename = file.generateSafeFileName(title, extension);          // "My_Podcast__Episode__1.mp3"
 const isValid = file.validateAudioUrl(url);                            // true
+const sizeBytes = file.parseContentLength(contentLength);             // 15728640
+const readableSize = file.formatFileSize(sizeBytes);                  // "15.0 MB"
 ```
 
 ### Download Organization

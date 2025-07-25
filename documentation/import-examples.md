@@ -184,3 +184,172 @@ const results = batch.processItemsWithPairing(items, (item) => {
 
 return results;
 ```
+
+## New Features - N8N Utilities and Enhanced SQL
+
+### N8N Node Data Extraction
+
+```javascript
+// Import N8N utilities for node data extraction
+const { createN8NHelpers, processItemsWithPairing } = require('sww-n8n-helpers');
+
+// Create N8N helpers with $ function bound
+const { extractNodeData, checkNodeAvailability } = createN8NHelpers($);
+
+// Check if required nodes have data
+const status = checkNodeAvailability(['Podcast Episodes', 'Sources']);
+if (!status.hasData['Podcast Episodes']) {
+  throw new Error('No podcast episode data available');
+}
+
+// Process with node data extraction
+const results = processItemsWithPairing($input.all(), (item, index) => {
+  // Extract data from multiple nodes with proper item indexing
+  const nodeData = extractNodeData({
+    episode: 'Podcast Episodes',
+    source: 'Sources',
+    config: 'Processing Config'
+  }, item, index);
+
+  return {
+    title: nodeData.episode?.title || 'Untitled',
+    sourceUrl: nodeData.source?.url,
+    duration: nodeData.episode?.duration || 0,
+    configSetting: nodeData.config?.setting || 'default'
+  };
+});
+
+return results;
+```
+
+### Enhanced SQL Generation with Field Mappings
+
+```javascript
+// Import enhanced SQL functions and utilities
+const { 
+  generateInsertStatement, 
+  generateEnhancedSQLValue,
+  formatFileSize,
+  createN8NHelpers 
+} = require('sww-n8n-helpers');
+
+const { extractNodeData } = createN8NHelpers($);
+
+// Define field mappings for type-aware SQL generation
+const FIELD_MAPPINGS = {
+  Title: { type: 'title', maxLength: 250 },
+  Description: { type: 'content' },
+  AuthorEmail: { type: 'email' },
+  PublishDate: { type: 'datetime' },
+  FileSize: { type: 'int' },
+  IsActive: { type: 'boolean' },
+  CategoryId: { type: 'guid' }
+};
+
+const results = $input.all().map((item, index) => {
+  // Extract data from nodes
+  const nodeData = extractNodeData(['Episodes', 'Authors'], item, index);
+  
+  // Prepare data for SQL insertion
+  const insertData = {
+    Title: nodeData.Episodes?.title,
+    Description: nodeData.Episodes?.description,
+    AuthorEmail: nodeData.Authors?.email,
+    PublishDate: nodeData.Episodes?.publishDate || new Date().toISOString(),
+    FileSize: nodeData.Episodes?.fileSize || 0,
+    IsActive: true
+  };
+
+  // Generate enhanced SQL with OUTPUT clause and special values
+  const sql = generateInsertStatement('Articles', insertData, {
+    outputClause: 'OUTPUT INSERTED.ArticleId, INSERTED.Title',
+    specialValues: {
+      ArticleId: 'NEWID()',
+      CreatedAt: 'GETDATE()'
+    },
+    fieldMappings: FIELD_MAPPINGS
+  });
+
+  // Format file size for display
+  const readableSize = formatFileSize(insertData.FileSize);
+
+  return {
+    sql: sql,
+    metadata: {
+      title: insertData.Title,
+      fileSize: readableSize,
+      hasAuthor: !!nodeData.Authors?.email
+    }
+  };
+});
+
+return results;
+```
+
+### Type-Aware SQL Value Generation
+
+```javascript
+// Import enhanced SQL value generation
+const { generateEnhancedSQLValue } = require('sww-n8n-helpers');
+
+// Convert various data types to SQL-safe values
+const sqlValues = {
+  // String handling
+  title: generateEnhancedSQLValue("O'Reilly's Book", 'title'),
+  // Returns: "'O''Reilly''s Book'"
+  
+  // Email normalization
+  email: generateEnhancedSQLValue("USER@EXAMPLE.COM", 'email'),
+  // Returns: "'user@example.com'"
+  
+  // Number handling
+  price: generateEnhancedSQLValue("99.99", 'decimal'),
+  // Returns: "99.99"
+  
+  // Boolean conversion
+  active: generateEnhancedSQLValue(true, 'boolean'),
+  // Returns: "1"
+  
+  // GUID validation
+  id: generateEnhancedSQLValue('550e8400-e29b-41d4-a716-446655440000', 'guid'),
+  // Returns: "TRY_CONVERT(uniqueidentifier, '550e8400-e29b-41d4-a716-446655440000')"
+  
+  // Date formatting
+  created: generateEnhancedSQLValue(new Date(), 'datetime'),
+  // Returns: "'2024-01-15T10:30:00.000Z'"
+};
+
+console.log('Generated SQL values:', sqlValues);
+```
+
+### File Size Formatting
+
+```javascript
+// Import file utilities
+const { formatFileSize, parseContentLength, validateFileSize } = require('sww-n8n-helpers');
+
+const results = $input.all().map(item => {
+  // Parse file size from various sources
+  const sizeInBytes = parseContentLength(item.json.contentLength) || 0;
+  
+  // Format for display
+  const readableSize = formatFileSize(sizeInBytes);
+  const detailedSize = formatFileSize(sizeInBytes, { precision: 2 });
+  
+  // Validate size constraints
+  const isValidSize = validateFileSize(sizeInBytes, {
+    minSize: 1024,          // 1KB minimum
+    maxSize: 100 * 1024 * 1024  // 100MB maximum
+  });
+
+  return {
+    originalSize: sizeInBytes,
+    readableSize: readableSize,      // "15.0 MB"
+    detailedSize: detailedSize,      // "15.73 MB"
+    isValidSize: isValidSize,
+    shouldProcess: isValidSize && sizeInBytes > 0
+  };
+});
+
+return results;
+```

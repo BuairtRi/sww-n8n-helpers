@@ -6,15 +6,15 @@ Comprehensive SQL injection prevention utilities optimized for Microsoft SQL Ser
 
 ```javascript
 // Individual function imports (recommended for smaller projects)
-const { sanitizeForSQL, sanitizeByFieldType } = require('sww-n8n-helpers');
+const { sanitizeForSQL, sanitizeByFieldType, generateInsertStatement, generateEnhancedSQLValue } = require('sww-n8n-helpers');
 
 // Module-based imports (recommended for larger projects)
 const { modules } = require('sww-n8n-helpers');
-const { sanitizeForSQL, sanitizeByFieldType } = modules.sqlSanitization;
+const { sanitizeForSQL, sanitizeByFieldType, generateInsertStatement, generateEnhancedSQLValue } = modules.sqlSanitization;
 
 // Import entire module
 const utils = require('sww-n8n-helpers');
-const { sanitizeForSQL } = utils.modules.sqlSanitization;
+const { sanitizeForSQL, generateEnhancedSQLValue } = utils.modules.sqlSanitization;
 ```
 
 ## Key Functions
@@ -24,6 +24,7 @@ const { sanitizeForSQL } = utils.modules.sqlSanitization;
 Core sanitization function that uses `tsqlstring` for robust SQL injection prevention.
 
 **Parameters:**
+
 - `text` (Any): Text to sanitize (converts objects to JSON)
 - `options` (Object): Sanitization options
   - `maxLength` (Number): Maximum length (null for unlimited)
@@ -33,6 +34,7 @@ Core sanitization function that uses `tsqlstring` for robust SQL injection preve
   - `useTsqlstring` (Boolean): Use tsqlstring for escaping (default: true)
 
 **Example: Basic SQL Sanitization**
+
 ```javascript
 const { sanitizeForSQL } = require('sww-n8n-helpers');
 
@@ -54,6 +56,7 @@ const truncated = sanitizeForSQL("Very long text...", { maxLength: 20 });
 Enhanced sanitization with field-specific rules.
 
 **Field Types:**
+
 - `title`, `name`, `subject`: No newlines, strict mode, 250 char limit
 - `description`, `content`, `summary`: Allows newlines, preserves formatting
 - `url`, `link`: Removes quotes/spaces, strict validation
@@ -61,6 +64,7 @@ Enhanced sanitization with field-specific rules.
 - `json`: Validates JSON format before sanitization
 
 **Example: Field-Specific Sanitization**
+
 ```javascript
 const { sanitizeByFieldType } = require('sww-n8n-helpers');
 
@@ -82,6 +86,7 @@ const content = sanitizeByFieldType("Multi-line\ncontent with\n\nbreaks", 'conte
 Batch sanitization with automatic field mapping and validation.
 
 **Parameters:**
+
 - `items` (Array): Items to sanitize
 - `options` (Object): Processing options
   - `fieldMappings` (Object): Field type mappings
@@ -90,6 +95,7 @@ Batch sanitization with automatic field mapping and validation.
   - `maintainPairing` (Boolean): Maintain n8n item pairing
 
 **Example: Batch Processing with Field Mappings**
+
 ```javascript
 const { sanitizeItemsBatch } = require('sww-n8n-helpers');
 
@@ -113,6 +119,7 @@ return results;
 ```
 
 **Example: Batch Sanitization**
+
 ```javascript
 const { sanitizeItemsBatch } = require('sww-n8n-helpers');
 
@@ -134,9 +141,19 @@ const results = sanitizeItemsBatch(items, {
 
 #### `generateInsertStatement(tableName, data, options)`
 
-Generate safe INSERT statements with proper escaping.
+Generate safe INSERT statements with proper escaping and advanced features.
 
-**Example: Generate INSERT Statement**
+**Parameters:**
+
+- `tableName` (String): Target table name
+- `data` (Object|Array): Data to insert (single object or array of objects)  
+- `options` (Object): Generation options
+  - `outputClause` (String): OUTPUT clause for SQL Server (e.g., "OUTPUT INSERTED.*")
+  - `specialValues` (Object): Raw SQL values like `{ id: 'NEWID()' }`
+  - `fieldMappings` (Object): Field type mappings for enhanced sanitization
+
+**Example: Basic INSERT Statement**
+
 ```javascript
 const { generateInsertStatement } = require('sww-n8n-helpers');
 
@@ -145,11 +162,155 @@ const insertSQL = generateInsertStatement('Books', data);
 // Returns: "INSERT INTO [Books] ([Title], [Price]) VALUES ('O''Reilly Book', 29.99)"
 ```
 
+**Example: Enhanced INSERT with OUTPUT Clause**
+
+```javascript
+const { generateInsertStatement } = require('sww-n8n-helpers');
+
+const data = {
+  Title: "New Book",
+  AuthorEmail: "author@example.com",
+  PublishedDate: new Date().toISOString()
+};
+
+const insertSQL = generateInsertStatement('Books', data, {
+  outputClause: 'OUTPUT INSERTED.BookId, INSERTED.Title',
+  specialValues: {
+    BookId: 'NEWID()',
+    CreatedAt: 'GETDATE()'
+  },
+  fieldMappings: {
+    Title: { type: 'title', maxLength: 200 },
+    AuthorEmail: { type: 'email' },
+    PublishedDate: { type: 'datetime' }
+  }
+});
+
+// Returns: 
+// INSERT INTO [Books] ([Title], [AuthorEmail], [PublishedDate], [BookId], [CreatedAt])
+// OUTPUT INSERTED.BookId, INSERTED.Title
+// VALUES ('New Book', 'author@example.com', '2024-01-15T10:30:00.000Z', NEWID(), GETDATE())
+```
+
+**Example: Bulk INSERT with Field Mappings**
+
+```javascript
+const episodes = [
+  { title: "Episode 1", duration: 3600, description: "First episode content..." },
+  { title: "Episode 2", duration: 2400, description: "Second episode content..." }
+];
+
+const fieldMappings = {
+  title: { type: 'title', maxLength: 250 },
+  description: { type: 'content' },
+  duration: { type: 'int' }
+};
+
+const bulkSQL = generateInsertStatement('Episodes', episodes, {
+  fieldMappings,
+  specialValues: { EpisodeId: 'NEWID()' }
+});
+// Generates bulk INSERT with proper type-aware sanitization
+```
+
+#### `generateEnhancedSQLValue(value, dataType, options)`
+
+Generate SQL-ready values with comprehensive type handling and sanitization.
+
+**Parameters:**
+
+- `value` (Any): Value to convert to SQL format
+- `dataType` (String): Data type for specialized handling
+- `options` (Object): Additional options like `maxLength`
+
+**Supported Data Types:**
+
+- `string`, `title`, `name`, `subject` - Text with appropriate sanitization
+- `number`, `int`, `integer`, `float`, `decimal` - Numeric values
+- `guid`, `uniqueidentifier`, `uuid` - GUID handling with validation
+- `date`, `datetime`, `datetime2`, `timestamp` - Date/time formatting
+- `url`, `link` - URL validation and sanitization
+- `filename` - Filename-safe text processing
+- `content`, `text`, `description`, `summary` - Long text content
+- `email` - Email validation and formatting
+- `json` - JSON string validation
+- `boolean`, `bit` - Boolean to bit conversion
+
+**Example: Type-Aware Value Generation**
+
+```javascript
+const { generateEnhancedSQLValue } = require('sww-n8n-helpers');
+
+// String values
+const title = generateEnhancedSQLValue("O'Reilly Book", 'title');
+// Returns: "'O''Reilly Book'"
+
+const email = generateEnhancedSQLValue("USER@EXAMPLE.COM", 'email');
+// Returns: "'user@example.com'" (normalized to lowercase)
+
+// Numeric values
+const price = generateEnhancedSQLValue("29.99", 'decimal');
+// Returns: "29.99" (no quotes for numbers)
+
+const invalidNumber = generateEnhancedSQLValue("not-a-number", 'int');
+// Returns: "NULL" (invalid numbers become NULL)
+
+// Date values
+const date = generateEnhancedSQLValue(new Date('2024-01-15'), 'datetime');
+// Returns: "'2024-01-15T00:00:00.000Z'"
+
+// Boolean values
+const isActive = generateEnhancedSQLValue(true, 'boolean');
+// Returns: "1" (SQL Server bit format)
+
+// GUID values
+const id = generateEnhancedSQLValue('123e4567-e89b-12d3-a456-426614174000', 'guid');
+// Returns: "TRY_CONVERT(uniqueidentifier, '123e4567-e89b-12d3-a456-426614174000')"
+
+// URL values
+const url = generateEnhancedSQLValue('https://example.com/path', 'url');
+// Returns: "'https://example.com/path'" (validated and sanitized)
+
+// Content with length limits
+const description = generateEnhancedSQLValue('Very long content...', 'content', { maxLength: 100 });
+// Returns: "'Very long content...'" (truncated if needed)
+```
+
+**Example: Integration with Field Mappings**
+
+```javascript
+const fieldMappings = {
+  Title: { type: 'title', maxLength: 200 },
+  Email: { type: 'email' },
+  Price: { type: 'decimal' },
+  IsActive: { type: 'boolean' },
+  CreatedDate: { type: 'datetime' }
+};
+
+const data = {
+  Title: "Amazing Product!",
+  Email: "CONTACT@EXAMPLE.COM",
+  Price: "99.99",
+  IsActive: true,
+  CreatedDate: new Date()
+};
+
+// Convert all values using their field mappings
+const sqlValues = {};
+Object.entries(data).forEach(([field, value]) => {
+  const mapping = fieldMappings[field];
+  sqlValues[field] = generateEnhancedSQLValue(value, mapping.type, mapping);
+});
+
+// Results in properly typed and sanitized SQL values
+```
+
 #### `generateUpdateStatement(tableName, data, whereClause, options)`
 
 Generate safe UPDATE statements.
 
 **Example: Generate UPDATE Statement**
+
 ```javascript
 const { generateUpdateStatement } = require('sww-n8n-helpers');
 
@@ -167,6 +328,7 @@ const updateSQL = generateUpdateStatement('Books', updateData, whereClause);
 For dynamic query construction.
 
 **Example: Dynamic Query Building**
+
 ```javascript
 const { formatSqlQuery, escapeSqlIdentifier } = require('sww-n8n-helpers');
 
@@ -183,6 +345,7 @@ const safeTable = escapeSqlIdentifier('user-table');
 ## Integration with Microsoft SQL Node
 
 ### Pre-processing for SQL Node
+
 ```javascript
 // Code node before Microsoft SQL node
 const { sanitizeItemsBatch } = require('sww-n8n-helpers');
@@ -215,6 +378,7 @@ return sqlNodeReady;
 ```
 
 ### SQL Node Configuration
+
 In your Microsoft SQL node, use the sanitized fields directly:
 
 ```sql
@@ -242,6 +406,7 @@ const { sanitizeForSQL, generateInsertStatement } = modules.sqlSanitization;
 ## Validation and Error Handling
 
 ### Processing with Validation
+
 ```javascript
 const { sanitizeItemsBatch } = require('sww-n8n-helpers');
 
@@ -271,6 +436,7 @@ return results;
 ## Security Best Practices
 
 ### 1. Always Sanitize User Input
+
 ```javascript
 // BAD: Direct user input to SQL
 const userTitle = $input.first().json.userTitle;
@@ -283,6 +449,7 @@ const query = `INSERT INTO Posts (Title) VALUES ('${safeTitle}')`;
 ```
 
 ### 2. Use Field-Specific Sanitization
+
 ```javascript
 const { sanitizeByFieldType } = require('sww-n8n-helpers');
 
@@ -296,6 +463,7 @@ const userData = {
 ```
 
 ### 3. Validate Sanitization Results
+
 ```javascript
 const { validateSanitizedText } = require('sww-n8n-helpers');
 
@@ -332,4 +500,4 @@ const DEFAULT_FIELD_MAPPINGS = {
 };
 ```
 
-These can be extended or overridden based on your specific database schema and requirements. 
+These can be extended or overridden based on your specific database schema and requirements.

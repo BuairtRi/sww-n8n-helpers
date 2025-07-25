@@ -8,7 +8,8 @@ A comprehensive collection of utility functions designed specifically for n8n wo
 |--------|---------|--------------|
 | [Batch Processing](./batch-processing.md) | Process arrays with error handling | Item pairing, parallel processing, retry logic |
 | [Duration Utilities](./duration-utilities.md) | Parse and format time durations | Human-readable formats, HH:MM:SS conversion |
-| [File Utilities](./file-utilities.md) | File and media handling | Safe filename generation, MIME type detection |
+| [File Utilities](./file-utilities.md) | File and media handling | Safe filename generation, MIME type detection, file size formatting |
+| [N8N Utilities](./n8n-utilities.md) | N8N workflow node data extraction | Node data access, item indexing, error handling |
 | [SQL Sanitization](./sql-sanitization.md) | Prevent SQL injection attacks | T-SQL support, field-specific sanitization |
 | [Text Processing](./text-processing.md) | Clean and manipulate text | HTML cleaning, markdown processing |
 | [Validation](./validation-utilities.md) | Data validation and error handling | Fallback chains, type validation |
@@ -56,6 +57,46 @@ const validEmail = validateEmail(email) ? email.toLowerCase() : null;
 const filename = generateSafeFileName(title, 'txt');
 
 // Results: "My Article: Special \"Chars\"", "user@example.com", "My_Article__Special__Chars_.txt"
+```
+
+### N8N Node Data Extraction
+
+```javascript
+const { createN8NHelpers } = require('sww-n8n-helpers');
+const { extractNodeData } = createN8NHelpers($);
+
+// Extract data from multiple nodes with proper item indexing
+const nodeData = extractNodeData({
+  episodes: 'Podcast Episodes',
+  sources: 'Data Sources'
+}, item, index);
+
+const title = nodeData.episodes?.title || 'Untitled';
+const sourceUrl = nodeData.sources?.url || null;
+```
+
+### Enhanced SQL Generation
+
+```javascript
+const { generateInsertStatement, formatFileSize } = require('sww-n8n-helpers');
+
+const insertData = {
+  title: "New Episode",
+  fileSize: 15728640,  // 15MB
+  publishDate: new Date()
+};
+
+const sql = generateInsertStatement('Episodes', insertData, {
+  outputClause: 'OUTPUT INSERTED.EpisodeId',
+  specialValues: { EpisodeId: 'NEWID()' },
+  fieldMappings: {
+    title: { type: 'title', maxLength: 250 },
+    fileSize: { type: 'int' },
+    publishDate: { type: 'datetime' }
+  }
+});
+
+const readableSize = formatFileSize(insertData.fileSize); // "15.0 MB"
 ```
 
 ## Common Usage Patterns

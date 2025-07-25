@@ -1,6 +1,6 @@
 {
   "name": "sww-n8n-helpers",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "description": "A NPM package containing reusable utility functions for use in N8N code nodes, providing common functionality for text processing, data validation, batch operations, and more.",
   "main": "index.js",
   "keywords": [
