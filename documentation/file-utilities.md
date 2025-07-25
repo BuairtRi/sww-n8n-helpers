@@ -4,17 +4,16 @@ Comprehensive file and media handling utilities for generating safe filenames, v
 
 ## Import Options
 
-The module supports both individual function imports and grouped module imports:
+The module supports both individual function imports and module namespace imports:
 
 **Individual Function Imports:**
 ```javascript
 const { generateSafeFileName, extractFileExtension } = require('@rin8n/content-processing-utils');
 ```
 
-**Grouped Module Imports:**
+**Module Namespace Imports:**
 ```javascript
-const { modules } = require('@rin8n/content-processing-utils');
-const { file } = modules;
+const { file } = require('@rin8n/content-processing-utils');
 // Now use: file.generateSafeFileName(), file.extractFileExtension(), etc.
 ```
 
@@ -22,7 +21,7 @@ const { file } = modules;
 ```javascript
 const utils = require('@rin8n/content-processing-utils');
 // Individual functions: utils.generateSafeFileName()
-// Grouped modules: utils.modules.file.generateSafeFileName()
+// Module namespaces: utils.file.generateSafeFileName()
 ```
 
 ## Key Functions
@@ -185,10 +184,9 @@ const filename = generateSafeFileName(title, extension);          // "My_Podcast
 const isValid = validateAudioUrl(url);                            // true
 ```
 
-### File Processing Pipeline (Grouped Modules)
+### File Processing Pipeline (Module Namespaces)
 ```javascript
-const { modules } = require('@rin8n/content-processing-utils');
-const { file } = modules;
+const { file } = require('@rin8n/content-processing-utils');
 
 const url = "https://example.com/podcast.mp3";
 const title = "My Podcast: Episode #1";

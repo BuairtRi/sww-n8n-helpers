@@ -7,7 +7,7 @@ const {
   getMimeTypeFromExtension,
   parseContentLength,
   validateFileSize,
-  modules
+  file
 } = require('../index');
 
 describe('File Utilities', () => {
@@ -18,11 +18,11 @@ describe('File Utilities', () => {
       expect(typeof validateAudioUrl).toBe('function');
     });
 
-    test('should export grouped modules', () => {
-      expect(modules).toBeDefined();
-      expect(modules.file).toBeDefined();
-      expect(typeof modules.file.generateSafeFileName).toBe('function');
-      expect(typeof modules.file.extractFileExtension).toBe('function');
+    test('should export module namespaces', () => {
+      expect(file).toBeDefined();
+      expect(typeof file.generateSafeFileName).toBe('function');
+      expect(typeof file.extractFileExtension).toBe('function');
+      expect(typeof file.validateAudioUrl).toBe('function');
     });
 
     test('should have identical functionality in both export styles', () => {
@@ -31,7 +31,7 @@ describe('File Utilities', () => {
       const extension = 'mp3';
       
       const individualResult = generateSafeFileName(title, extension);
-      const groupedResult = modules.file.generateSafeFileName(title, extension);
+      const groupedResult = file.generateSafeFileName(title, extension);
       
       expect(individualResult).toBe(groupedResult);
     });
