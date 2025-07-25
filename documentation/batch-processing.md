@@ -1,230 +1,288 @@
 # Batch Processing Module
 
-The batch processing module provides robust utilities for processing arrays of items in n8n workflows with error handling, item pairing, and parallel processing capabilities.
+The batch processing module provides robust N8N-optimized utilities for processing arrays of items with automatic context injection, error handling, item pairing, and parallel processing capabilities.
 
 ## Import Options
 
-You can import batch functions using either approach:
-
 **Individual function imports:**
 ```javascript
-const { processItemsWithPairing, filterAndProcess } = require('sww-n8n-helpers');
+const { processItemsWithN8N } = require('sww-n8n-helpers');
 ```
 
 **Namespace imports:**
 ```javascript
 const { batch } = require('sww-n8n-helpers');
-// Then use: batch.processItemsWithPairing(), batch.filterAndProcess(), etc.
+// Then use: batch.processItemsWithN8N($)
 ```
 
-## Key Functions
+## Core Function: `processItemsWithN8N($)`
 
-### `processItemsWithPairing(items, processor, options)`
+This factory function takes n8n's `$` function and returns helper methods optimized for n8n workflows.
 
-Process an array of items with automatic error handling and n8n item pairing maintenance.
+### `processItems(items, processor, nodeNames, options)`
+
+Process an array of n8n items with automatic context injection and node data retrieval.
 
 **Parameters:**
-- `items` (Array): Items to process
-- `processor` (Function): Processing function `(item, index) => result`
+- `items` (Array): N8N items from `$input.all()` or `$('NodeName').all()`
+- `processor` (Function): Processing function that receives context variables
+- `nodeNames` (Array): Array of node names to extract data for each item (optional)
 - `options` (Object): Processing options
-  - `maintainPairing` (Boolean): Maintain n8n item pairing (default: true)
+  - `batchSize` (Number): Process in batches of this size (default: null)
   - `logErrors` (Boolean): Log processing errors (default: true)
-  - `stopOnError` (Boolean): Stop on first error (default: false)
-  - `batchSize` (Number): Process in batches (default: null)
+  - `stopOnError` (Boolean): Stop processing on first error (default: false)
+  - `concurrency` (Number): For parallel processing (default: 1 = sequential)
 
-**Example: Basic Item Processing**
+**Returns:** Object with `{ results, errors, stats }`
+
+### `filterAndProcess(items, filterFn, processor, nodeNames, options)`
+
+Filter items based on conditions and process only the matching ones with the same context injection.
+
+## Code Node Examples
+
+### Basic Item Processing with Context Injection
+
 ```javascript
-const { processItemsWithPairing } = require('sww-n8n-helpers');
+// Import the factory function
+const { processItemsWithN8N } = require('sww-n8n-helpers');
 
-const items = [{ json: { id: 1, title: 'Hello' } }, { json: { id: 2, title: 'World' } }];
+// Create helpers with bound $ function
+const { processItems } = processItemsWithN8N($);
 
-const results = processItemsWithPairing(items, (item, index) => {
-  return {
-    id: item.json.id,
-    processedTitle: item.json.title.toUpperCase(), // 'HELLO', 'WORLD'
-    itemIndex: index
-  };
-});
-// Returns: [{ json: { id: 1, processedTitle: 'HELLO', itemIndex: 0 }, pairedItem: 0 }, ...]
-```
+// Get input items
+const inputData = $input.all();
 
-**Example: Batch Processing for Large Datasets**
-```javascript
-const results = processItemsWithPairing(largeItemArray, (item, index) => {
-  return expensiveOperation(item.json); // Process item
-}, {
-  batchSize: 50, // Process 50 items at a time to manage memory
-  stopOnError: false // Continue processing even if some items fail
-});
-```
-
-### `filterAndProcess(items, filterFn, processor, options)`
-
-Filter items based on conditions and process only the matching ones.
-
-**Example: Conditional Processing**
-```javascript
-const { filterAndProcess } = require('sww-n8n-helpers');
-
-const items = [
-  { json: { id: 1, email: 'user@test.com' } },
-  { json: { id: 2, email: 'invalid' } },
-  { json: { id: 3, email: 'admin@test.com' } }
-];
-
-const result = filterAndProcess(
-  items,
-  (item) => item.json.email.includes('@'), // Filter: only valid emails
-  (item, originalIndex) => ({ id: item.json.id, email: item.json.email.toLowerCase() })
-);
-
-// result.processed: [{ id: 1, email: 'user@test.com' }, { id: 3, email: 'admin@test.com' }]
-// result.filteredCount: 2, result.totalItems: 3
-```
-
-### `processItemsParallel(items, processor, options)`
-
-Process items in parallel for improved performance.
-
-**Example: Parallel Processing**
-```javascript
-const { processItemsParallel } = require('sww-n8n-helpers');
-
-const items = [{ json: { id: 1 } }, { json: { id: 2 } }, { json: { id: 3 } }];
-
-const results = await processItemsParallel(
-  items,
-  async (item) => {
-    const response = await fetch(`/api/${item.json.id}`);
-    return { id: item.json.id, data: await response.json() };
-  },
-  { concurrency: 2 } // Process 2 items simultaneously
-);
-```
-
-### `aggregateResults(processedItems, options)`
-
-Generate statistics from processed results.
-
-**Example: Processing Statistics**
-```javascript
-const { aggregateResults } = require('sww-n8n-helpers');
-
-const processedItems = [
-  { json: { id: 1, result: 'success' }, pairedItem: 0 },
-  { json: { _error: { type: 'validation_error' } }, pairedItem: 1 },
-  { json: { id: 3, result: 'success' }, pairedItem: 2 }
-];
-
-const stats = aggregateResults(processedItems);
-// Returns: { total: 3, successful: 2, failed: 1, successRate: 0.67, failureRate: 0.33 }
-```
-
-### `retryFailedItems(processedItems, originalItems, processor, options)`
-
-Retry processing for failed items.
-
-**Example: Retry Failed Items**
-```javascript
-const { retryFailedItems } = require('sww-n8n-helpers');
-
-const processedItems = [
-  { json: { id: 1, success: true }, pairedItem: 0 },
-  { json: { _error: { type: 'temp_failure' } }, pairedItem: 1 }
-];
-const originalItems = [{ json: { id: 1 } }, { json: { id: 2 } }];
-
-const retried = retryFailedItems(
-  processedItems,
-  originalItems,
-  (item) => ({ id: item.json.id, success: true, retried: true }),
-  { maxRetries: 1 }
-);
-// Retries only the failed item (index 1)
-```
-
-## Common Patterns
-
-### Data Validation Pipeline
-```javascript
-const { processItemsWithPairing, validateEmail } = require('sww-n8n-helpers');
-
-const items = [{ json: { id: 1, email: 'user@test.com' } }];
-
-const validated = processItemsWithPairing(items, (item, index) => {
-  const data = item.json;
-  
-  if (!data.id) throw new Error('Missing required ID');
-  
-  return {
-    id: data.id,
-    email: validateEmail(data.email) ? data.email : null,
-    valid: true
-  };
-});
-// Returns: [{ json: { id: 1, email: 'user@test.com', valid: true }, pairedItem: 0 }]
-```
-
-### SQL Node Integration
-```javascript
-const { processItemsWithPairing, sanitizeForSQL } = require('sww-n8n-helpers');
-
-const items = [{ json: { id: 1, title: "O'Reilly Book" } }];
-
-const sqlReady = processItemsWithPairing(items, (item) => ({
-  id: item.json.id,
-  title: sanitizeForSQL(item.json.title),  // Escapes quotes: "O''Reilly Book"
-  created_at: new Date().toISOString()
-}));
-// Ready for SQL node with safe data
-```
-
-### Error Recovery
-```javascript
-const { processItemsWithPairing } = require('sww-n8n-helpers');
-
-const items = [{ json: { data: 'test' } }];
-
-const results = processItemsWithPairing(items, (item) => {
-  try {
-    return { result: primaryProcessor(item.json) };
-  } catch (primaryError) {
-    try {
-      return { result: fallbackProcessor(item.json), fallback: true };
-    } catch (fallbackError) {
-      throw new Error(`Both processors failed: ${fallbackError.message}`);
-    }
+// Process with automatic context injection
+const result = await processItems(
+  inputData,
+  // Processor receives: $item, $json, $itemIndex, ...nodeData
+  ($item, $json, $itemIndex) => {
+    return {
+      id: $json.id,
+      processedTitle: $json.title.toUpperCase(),
+      itemIndex: $itemIndex,
+      timestamp: $now()
+    };
   }
-}, { logErrors: true });
-// Graceful fallback handling
+);
+
+// Return results (maintains n8n item pairing)
+return result.results;
+```
+
+### Processing with Data from Other Nodes
+
+```javascript
+const { processItemsWithN8N } = require('sww-n8n-helpers');
+const { processItems } = processItemsWithN8N($);
+
+const inputData = $input.all();
+
+// Extract data from "User Settings" and "API Config" nodes for each item
+const result = await processItems(
+  inputData,
+  // Processor receives context + data from specified nodes
+  ($item, $json, $itemIndex, userSettings, apiConfig) => {
+    return {
+      userId: $json.id,
+      email: $json.email,
+      // Use data from other nodes
+      notifications: userSettings?.notifications || true,
+      apiEndpoint: apiConfig?.endpoint || 'https://api.default.com',
+      processedAt: $now()
+    };
+  },
+  ['User Settings', 'API Config'], // Node names to extract data from
+  {
+    logErrors: true,
+    batchSize: 50 // Process in batches of 50
+  }
+);
+
+return result.results;
+```
+
+### Parallel Processing for I/O Operations
+
+```javascript
+const { processItemsWithN8N } = require('sww-n8n-helpers');
+const { processItems } = processItemsWithN8N($);
+
+const inputData = $input.all();
+
+const result = await processItems(
+  inputData,
+  // Async processor for API calls
+  async ($item, $json, $itemIndex) => {
+    try {
+      const response = await fetch(`https://api.example.com/users/${$json.id}`);
+      const userData = await response.json();
+      
+      return {
+        id: $json.id,
+        enrichedData: userData,
+        processed: true
+      };
+    } catch (error) {
+      throw new Error(`API call failed for user ${$json.id}: ${error.message}`);
+    }
+  },
+  [], // No additional nodes needed
+  {
+    concurrency: 3, // Process 3 items in parallel
+    logErrors: true
+  }
+);
+
+// Check processing statistics
+console.log(`Processed: ${result.stats.successful}/${result.stats.total}`);
+console.log(`Success rate: ${(result.stats.successRate * 100).toFixed(1)}%`);
+
+return result.results;
+```
+
+### Filter and Process Pattern
+
+```javascript
+const { processItemsWithN8N } = require('sww-n8n-helpers');
+const { filterAndProcess } = processItemsWithN8N($);
+
+const inputData = $input.all();
+
+const result = await filterAndProcess(
+  inputData,
+  // Filter function with context injection
+  ($item, $json, $itemIndex) => {
+    return $json.email && $json.email.includes('@') && $json.active === true;
+  },
+  // Processor function for filtered items
+  ($item, $json, $itemIndex) => {
+    return {
+      id: $json.id,
+      email: $json.email.toLowerCase(),
+      welcomeMessage: `Hello ${$json.name || 'User'}!`,
+      processedAt: $now()
+    };
+  },
+  [], // No additional nodes
+  {
+    logErrors: true
+  }
+);
+
+// Log filter statistics
+console.log(`Filtered ${result.filterStats.filteredCount} from ${result.filterStats.totalItems} items`);
+console.log(`Filter rate: ${(result.filterStats.filterRate * 100).toFixed(1)}%`);
+
+return result.results;
+```
+
+### Error Handling and Recovery
+
+```javascript
+const { processItemsWithN8N } = require('sww-n8n-helpers');
+const { processItems } = processItemsWithN8N($);
+
+const inputData = $input.all();
+
+const result = await processItems(
+  inputData,
+  ($item, $json, $itemIndex) => {
+    // Validate required fields
+    if (!$json.id) {
+      throw new Error('Missing required ID field');
+    }
+    
+    if (!$json.email || !$json.email.includes('@')) {
+      throw new Error('Invalid email format');
+    }
+    
+    return {
+      id: $json.id,
+      email: $json.email.toLowerCase(),
+      validated: true,
+      validatedAt: $now()
+    };
+  },
+  [],
+  {
+    logErrors: true,
+    stopOnError: false // Continue processing other items
+  }
+);
+
+// Separate successful and failed items
+const successful = result.results.filter(item => !item.json.$error);
+const failed = result.results.filter(item => item.json.$error);
+
+console.log(`Processing completed: ${successful.length} successful, ${failed.length} failed`);
+
+// Return all results (errors will have $error property)
+return result.results;
+```
+
+## Processing Statistics
+
+Every processing operation returns detailed statistics:
+
+```javascript
+const result = await processItems(/* ... */);
+
+// Access statistics
+console.log(result.stats);
+// {
+//   total: 100,
+//   successful: 95,
+//   failed: 5,
+//   successRate: 0.95,
+//   failureRate: 0.05,
+//   errorBreakdown: {
+//     'validation_error': 3,
+//     'processing_error': 2
+//   },
+//   sampleErrors: [
+//     { type: 'validation_error', message: 'Missing ID', itemIndex: 5 }
+//   ]
+// }
+```
+
+## Error Structure
+
+Failed items include structured error information:
+
+```javascript
+{
+  json: {
+    // Original item data
+    id: 123,
+    // Error details
+    $error: {
+      type: "processing_error",
+      message: "Detailed error message",
+      timestamp: "2024-01-15T10:30:00.000Z",
+      context: {
+        itemIndex: 5,
+        originalData: { id: 123, name: "Item 5" },
+        stack: "Error stack trace..."
+      }
+    }
+  },
+  pairedItem: 5 // Maintains n8n item pairing
+}
 ```
 
 ## Best Practices
 
-1. **Always use `maintainPairing: true`** for n8n compatibility
-2. **Enable error logging** during development with `logErrors: true`
-3. **Use batch processing** for large datasets to manage memory
-4. **Implement graceful degradation** with try-catch in processors
-5. **Leverage parallel processing** for I/O-heavy operations
-6. **Monitor statistics** with `aggregateResults()` for workflow health
-7. **Implement retry logic** for transient failures
+1. **Always use the factory pattern** with `processItemsWithN8N($)`
+2. **Leverage context injection** - use `$item`, `$json`, `$itemIndex` parameters
+3. **Extract node data** when you need data from other nodes for processing
+4. **Use parallel processing** for I/O-heavy operations with appropriate concurrency
+5. **Enable error logging** during development
+6. **Don't stop on errors** unless critical - let failed items flow through with `$error`
+7. **Monitor statistics** to track processing health
+8. **Use batch processing** for large datasets to manage memory
 
-## Error Handling
+## Legacy Function (Deprecated)
 
-Failed items return structured error objects:
-```javascript
-{
-  json: {
-    _error: {
-      type: "processing_error",
-      message: "Detailed error message",
-      timestamp: "2024-01-15T10:30:00.000Z",
-      itemIndex: 5,
-      originalData: { id: "item_5" }
-    }
-  },
-  pairedItem: 5
-}
-```
-
-This allows downstream nodes to handle errors appropriately while maintaining data flow integrity. 
+The module also exports `processItemsWithPairing` for backward compatibility, but it's deprecated. Use `processItemsWithN8N($).processItems` instead for better functionality and n8n integration. 

@@ -14,6 +14,16 @@ A comprehensive collection of utility functions designed specifically for n8n wo
 | [Text Processing](./text-processing.md) | Clean and manipulate text | HTML cleaning, markdown processing |
 | [Validation](./validation-utilities.md) | Data validation and error handling | Fallback chains, type validation |
 
+## n8n Built-in Functions Reference
+
+| Documentation | Purpose | Coverage |
+|---------------|---------|----------|
+| [Overview](./n8n-builtin-overview.md) | Introduction to n8n built-in functions | Function categories, usage contexts |
+| [Data Transformation](./n8n-builtin-data-transformation.md) | Array, string, object, number, date functions | Complete function reference with examples |
+| [Node Access](./n8n-builtin-node-access.md) | Input/output access between nodes | Current node input, cross-node data access |
+| [Utilities](./n8n-builtin-utilities.md) | Convenience, HTTP, metadata functions | JMESPath, validation, crypto, debugging |
+| [Code Nodes](./n8n-builtin-code-nodes.md) | Code node patterns and LangChain | Expression syntax, async operations, best practices |
+
 ## Installation & Setup
 
 In your n8n Code node, import the utilities:
