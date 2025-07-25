@@ -2,6 +2,21 @@
 
 The batch processing module provides robust utilities for processing arrays of items in n8n workflows with error handling, item pairing, and parallel processing capabilities.
 
+## Import Options
+
+You can import batch functions using either approach:
+
+**Individual function imports:**
+```javascript
+const { processItemsWithPairing, filterAndProcess } = require('sww-n8n-helpers');
+```
+
+**Namespace imports:**
+```javascript
+const { batch } = require('sww-n8n-helpers');
+// Then use: batch.processItemsWithPairing(), batch.filterAndProcess(), etc.
+```
+
 ## Key Functions
 
 ### `processItemsWithPairing(items, processor, options)`
@@ -19,7 +34,7 @@ Process an array of items with automatic error handling and n8n item pairing mai
 
 **Example: Basic Item Processing**
 ```javascript
-const { processItemsWithPairing } = require('@rin8n/content-processing-utils');
+const { processItemsWithPairing } = require('sww-n8n-helpers');
 
 const items = [{ json: { id: 1, title: 'Hello' } }, { json: { id: 2, title: 'World' } }];
 
@@ -49,7 +64,7 @@ Filter items based on conditions and process only the matching ones.
 
 **Example: Conditional Processing**
 ```javascript
-const { filterAndProcess } = require('@rin8n/content-processing-utils');
+const { filterAndProcess } = require('sww-n8n-helpers');
 
 const items = [
   { json: { id: 1, email: 'user@test.com' } },
@@ -73,7 +88,7 @@ Process items in parallel for improved performance.
 
 **Example: Parallel Processing**
 ```javascript
-const { processItemsParallel } = require('@rin8n/content-processing-utils');
+const { processItemsParallel } = require('sww-n8n-helpers');
 
 const items = [{ json: { id: 1 } }, { json: { id: 2 } }, { json: { id: 3 } }];
 
@@ -93,7 +108,7 @@ Generate statistics from processed results.
 
 **Example: Processing Statistics**
 ```javascript
-const { aggregateResults } = require('@rin8n/content-processing-utils');
+const { aggregateResults } = require('sww-n8n-helpers');
 
 const processedItems = [
   { json: { id: 1, result: 'success' }, pairedItem: 0 },
@@ -111,7 +126,7 @@ Retry processing for failed items.
 
 **Example: Retry Failed Items**
 ```javascript
-const { retryFailedItems } = require('@rin8n/content-processing-utils');
+const { retryFailedItems } = require('sww-n8n-helpers');
 
 const processedItems = [
   { json: { id: 1, success: true }, pairedItem: 0 },
@@ -132,7 +147,7 @@ const retried = retryFailedItems(
 
 ### Data Validation Pipeline
 ```javascript
-const { processItemsWithPairing, validateEmail } = require('@rin8n/content-processing-utils');
+const { processItemsWithPairing, validateEmail } = require('sww-n8n-helpers');
 
 const items = [{ json: { id: 1, email: 'user@test.com' } }];
 
@@ -152,7 +167,7 @@ const validated = processItemsWithPairing(items, (item, index) => {
 
 ### SQL Node Integration
 ```javascript
-const { processItemsWithPairing, sanitizeForSQL } = require('@rin8n/content-processing-utils');
+const { processItemsWithPairing, sanitizeForSQL } = require('sww-n8n-helpers');
 
 const items = [{ json: { id: 1, title: "O'Reilly Book" } }];
 
@@ -166,7 +181,7 @@ const sqlReady = processItemsWithPairing(items, (item) => ({
 
 ### Error Recovery
 ```javascript
-const { processItemsWithPairing } = require('@rin8n/content-processing-utils');
+const { processItemsWithPairing } = require('sww-n8n-helpers');
 
 const items = [{ json: { data: 'test' } }];
 
