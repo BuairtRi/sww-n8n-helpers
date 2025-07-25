@@ -2,6 +2,28 @@
 
 Clean, manipulate, and extract information from text content including HTML cleaning, markdown processing, and text normalization for n8n workflows.
 
+## Import Options
+
+This module supports two import patterns for maximum flexibility in n8n workflows:
+
+**Individual Function Import (Destructuring):**
+```javascript
+const { cleanHtml, stripMarkdown, countWords } = require('@rin8n/content-processing-utils');
+```
+
+**Module Object Import (Organized Access):**
+```javascript
+const { text } = require('@rin8n/content-processing-utils');
+// Then use: text.cleanHtml(...), text.stripMarkdown(...), text.countWords(...)
+```
+
+**Mixed Approach:**
+```javascript
+const { text, validateEmail } = require('@rin8n/content-processing-utils');
+// Use text module: text.cleanHtml(...)
+// Use individual function: validateEmail(...)
+```
+
 ## Key Functions
 
 ### `cleanHtml(html, options)`
@@ -40,6 +62,18 @@ const plainText = cleanHtml(htmlEmail, { removeElements: ['style', 'script'] });
 // Returns: "Hello customer!"
 
 const preview = truncateWithSeparator(plainText, 50, { omission: '...' });
+// Returns: "Hello customer!" (or truncated if longer)
+```
+
+**Example: Email Processing (Module Object Pattern)**
+```javascript
+const { text } = require('@rin8n/content-processing-utils');
+
+const htmlEmail = '<p>Hello <b>customer</b>!</p><style>body{color:red}</style>';
+const plainText = text.cleanHtml(htmlEmail, { removeElements: ['style', 'script'] });
+// Returns: "Hello customer!"
+
+const preview = text.truncateWithSeparator(plainText, 50, { omission: '...' });
 // Returns: "Hello customer!" (or truncated if longer)
 ```
 
@@ -167,6 +201,26 @@ const markdownContent = "# Title\n**Bold** text";
 
 const fromHtml = cleanHtml(htmlContent);        // "Hello world!"
 const fromMarkdown = stripMarkdown(markdownContent); // "Title Bold text"
+```
+
+### Organized n8n Workflow Processing
+```javascript
+// Using module objects for cleaner n8n node organization
+const { text, validation } = require('@rin8n/content-processing-utils');
+
+// Text processing pipeline
+const processContent = (rawContent) => {
+  const cleaned = text.cleanHtml(rawContent);
+  const normalized = text.normalizeText(cleaned);
+  const excerpt = text.generateExcerpt(normalized, 200);
+  const wordCount = text.countWords(normalized);
+  
+  return { excerpt, wordCount, fullText: normalized };
+};
+
+// Content validation and processing in one workflow
+const content = processContent('<p>Your HTML content here</p>');
+// Returns organized object with processed text metrics
 ```
 
 ### Web Scraping Cleanup

@@ -7,7 +7,8 @@ const {
   countWords,
   extractSentences,
   generateExcerpt,
-  normalizeText
+  normalizeText,
+  text // Import text module object for testing
 } = require('../index');
 
 describe('Text Processing Utilities', () => {
@@ -317,6 +318,38 @@ describe('Text Processing Utilities', () => {
 
     test('should handle text with only whitespace', () => {
       expect(normalizeText('   \n\t   ')).toBe(null);
+    });
+  });
+
+  describe('Module Object Export', () => {
+    test('should export text module object with all functions', () => {
+      expect(text).toBeDefined();
+      expect(typeof text).toBe('object');
+      
+      // Verify all text functions are available on the text object
+      expect(typeof text.cleanHtml).toBe('function');
+      expect(typeof text.truncateWithSeparator).toBe('function');
+      expect(typeof text.basicSanitizeForSQL).toBe('function');
+      expect(typeof text.stripMarkdown).toBe('function');
+      expect(typeof text.countWords).toBe('function');
+      expect(typeof text.extractSentences).toBe('function');
+      expect(typeof text.generateExcerpt).toBe('function');
+      expect(typeof text.normalizeText).toBe('function');
+    });
+
+    test('should work with module object pattern', () => {
+      const html = '<p>Hello <strong>world</strong>!</p>';
+      const result = text.cleanHtml(html);
+      expect(result).toBe('Hello world!');
+    });
+
+    test('should produce same results as individual function imports', () => {
+      const testText = 'This is a test sentence. Another sentence here.';
+      
+      // Test that module object and individual function produce same results
+      expect(text.countWords(testText)).toBe(countWords(testText));
+      expect(text.extractSentences(testText)).toEqual(extractSentences(testText));
+      expect(text.generateExcerpt(testText, 20)).toBe(generateExcerpt(testText, 20));
     });
   });
 }); 
