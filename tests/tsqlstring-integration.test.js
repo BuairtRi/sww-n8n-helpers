@@ -255,7 +255,7 @@ describe('TSQLString Integration Tests', () => {
       const escaped = escapeSqlValue(maliciousInput);
       // tsqlstring escapes the quotes, making the injection safe
       expect(escaped).toContain("''");
-      expect(escaped).toBe("''''; EXEC xp_cmdshell ''dir'' --'");
+      expect(escaped).toBe("'''; EXEC xp_cmdshell ''dir'' --'");
     });
   });
 
