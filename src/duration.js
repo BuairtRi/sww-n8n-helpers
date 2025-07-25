@@ -11,32 +11,53 @@ const parseDuration = require('parse-duration');
  * @returns {number|null} Duration in seconds or null if invalid
  */
 function parseDurationToSeconds(duration, options = {}) {
-  if (!duration) return null;
-  
   const { strict = false } = options;
+  
+  // Handle null/undefined
+  if (duration === null || duration === undefined) {
+    return null;
+  }
+  
+  // Handle empty string specifically
+  if (duration === '') {
+    return null;
+  }
+  
+  // Handle zero specifically
+  if (duration === 0 || duration === '0') {
+    return 0;
+  }
   
   try {
     // Handle pure numbers first (assumed to be seconds)
     const numValue = Number(duration);
-    if (!isNaN(numValue) && numValue > 0) {
-      return Math.round(numValue);
-    }
-    
-    // Try parse-duration first (handles human-readable formats)
-    const milliseconds = parseDuration(String(duration));
-    if (milliseconds) {
-      return Math.round(milliseconds / 1000);
+    if (!isNaN(numValue)) {
+      // Handle negative numbers
+      if (numValue < 0) {
+        return strict ? null : 0;
+      }
+      if (numValue >= 0) {
+        return Math.round(numValue);
+      }
     }
   } catch (error) {
-    if (strict) return null;
+    // Continue to other parsing methods
   }
   
-  // Fallback: Custom parser for time formats
+  // Try custom parser for time formats first (more reliable than parse-duration for these)
   try {
     const durationStr = String(duration).trim();
     
+    // Return null for empty strings after trimming
+    if (durationStr === '') {
+      return null;
+    }
+    
     if (durationStr.includes(':')) {
-      const parts = durationStr.split(':').map(Number);
+      const parts = durationStr.split(':').map(part => {
+        const num = parseInt(part, 10);
+        return isNaN(num) ? NaN : num;
+      });
       
       if (parts.some(isNaN)) {
         return strict ? null : 0;
@@ -44,16 +65,45 @@ function parseDurationToSeconds(duration, options = {}) {
       
       if (parts.length === 3) {
         // HH:MM:SS
-        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        const [hours, minutes, seconds] = parts;
+        if (hours >= 0 && minutes >= 0 && seconds >= 0 && minutes < 60 && seconds < 60) {
+          return hours * 3600 + minutes * 60 + seconds;
+        }
       } else if (parts.length === 2) {
         // MM:SS
-        return parts[0] * 60 + parts[1];
+        const [minutes, seconds] = parts;
+        if (minutes >= 0 && seconds >= 0 && seconds < 60) {
+          return minutes * 60 + seconds;
+        }
+      } else {
+        // Invalid format with too many colons
+        return strict ? null : 0;
       }
     }
-    
-    const numSeconds = parseFloat(durationStr);
-    if (!isNaN(numSeconds) && numSeconds > 0) {
-      return Math.round(numSeconds);
+  } catch (error) {
+    if (strict) return null;
+  }
+  
+  // Try parse-duration for human-readable formats
+  try {
+    const milliseconds = parseDuration(String(duration));
+    if (milliseconds && milliseconds > 0) {
+      return Math.round(milliseconds / 1000);
+    }
+  } catch (error) {
+    if (strict) return null;
+  }
+  
+  // Fallback: try parsing as number
+  try {
+    const numSeconds = parseFloat(String(duration));
+    if (!isNaN(numSeconds)) {
+      if (numSeconds < 0) {
+        return strict ? null : 0;
+      }
+      if (numSeconds >= 0) {
+        return Math.round(numSeconds);
+      }
     }
   } catch (error) {
     if (strict) return null;
@@ -107,7 +157,7 @@ function formatFriendlyDuration(seconds, options = {}) {
  * @returns {string|null} Time in HH:MM:SS format or null if invalid
  */
 function convertSecondsToHHMMSS(seconds, options = {}) {
-  if (!seconds || seconds < 0) return null;
+  if (!seconds || seconds <= 0) return null;
   
   const { alwaysShowHours = false } = options;
   
@@ -135,7 +185,7 @@ function isValidDurationFormat(duration) {
   if (!duration) return false;
   
   const result = parseDurationToSeconds(duration, { strict: true });
-  return result !== null && result > 0;
+  return result !== null && result >= 0;
 }
 
 /**
@@ -144,6 +194,10 @@ function isValidDurationFormat(duration) {
  * @returns {Object} Statistics object with total, average, min, max
  */
 function getDurationStats(durations) {
+  if (!Array.isArray(durations)) {
+    return { total: 0, average: 0, min: 0, max: 0, count: 0 };
+  }
+  
   const validDurations = durations
     .map(d => parseDurationToSeconds(d))
     .filter(d => d !== null && d > 0);

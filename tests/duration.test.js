@@ -117,11 +117,11 @@ describe('Duration Utilities', () => {
       const stats = getDurationStats(durations);
       
       expect(stats.count).toBe(4);
-      expect(stats.total).toBe(14400); // 3600 + 7200 + 1800 + 5400
-      expect(stats.average).toBe(3600);
+      expect(stats.total).toBe(18000); // 3600 + 7200 + 1800 + 5400 = 18000
+      expect(stats.average).toBe(4500); // 18000 / 4 = 4500
       expect(stats.min).toBe(1800);
       expect(stats.max).toBe(7200);
-      expect(stats.totalFormatted).toContain('4 hours');
+      expect(stats.totalFormatted).toContain('5 hours');
       expect(stats.averageFormatted).toContain('1 hour');
     });
 
