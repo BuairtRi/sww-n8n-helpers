@@ -20,7 +20,7 @@ module.exports = {
   ...validation,
   ...batch,
   ...sqlSanitization,
-  
+
   // Module namespace exports (organized imports)
   duration,
   file,
@@ -28,22 +28,6 @@ module.exports = {
   validation,
   batch,
   sqlSanitization
-};
-
-// Export modules as objects (for organized imports)
-const moduleExports = {
-  duration,
-  file,
-  text,
-  validation,
-  batch,
-  sqlSanitization
-};
-
-// Hybrid export: individual functions + modules object
-module.exports = {
-  ...individualExports,
-  modules: moduleExports
 };
 
 // ESM export for modern environments
