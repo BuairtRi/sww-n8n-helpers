@@ -26,7 +26,9 @@ sww-n8n-helpers/
 
 ## Usage
 
-Import utilities from the main package:
+This package supports two import styles to suit different use cases:
+
+### Individual Function Import (Recommended for single functions)
 
 ```javascript
 const {
@@ -41,6 +43,31 @@ const {
   processItemsWithPairing,
   sanitizeForSQL,
   escapeSqlValue
+} = require('@rin8n/content-processing-utils');
+```
+
+### Module Import (Recommended for multiple functions from the same module)
+
+```javascript
+const { 
+  duration, 
+  file, 
+  text, 
+  validation, 
+  batch, 
+  sqlSanitization 
+} = require('@rin8n/content-processing-utils');
+
+// Use: duration.parseDurationToSeconds(), file.extractFileExtension(), etc.
+```
+
+### Mixed Import (Use both styles as needed)
+
+```javascript
+const { 
+  parseDurationToSeconds,  // Individual function
+  file,                    // Entire file module
+  text                     // Entire text module
 } = require('@rin8n/content-processing-utils');
 ```
 
