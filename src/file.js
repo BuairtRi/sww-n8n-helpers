@@ -50,7 +50,7 @@ function extractFileExtension(audioUrl, mimeType, defaultExtension = 'mp3') {
       // Continue to MIME type fallback
     }
   }
-  
+
   // Fallback to MIME type mapping
   if (mimeType) {
     const extension = AUDIO_MIME_TYPES[mimeType.toLowerCase()];
@@ -58,7 +58,7 @@ function extractFileExtension(audioUrl, mimeType, defaultExtension = 'mp3') {
       return extension;
     }
   }
-  
+
   return defaultExtension;
 }
 
@@ -73,24 +73,24 @@ function extractFileExtension(audioUrl, mimeType, defaultExtension = 'mp3') {
  * @returns {string} Safe filename
  */
 function generateSafeFileName(title, fileExtension, options = {}) {
-  const { 
-    maxLength = 100, 
-    replacement = '_', 
-    fallbackName = 'episode' 
+  const {
+    maxLength = 100,
+    replacement = '_',
+    fallbackName = 'episode'
   } = options;
-  
+
   let baseFilename;
-  
+
   if (title && title.trim()) {
-    baseFilename = _.truncate(title.trim(), { 
-      length: maxLength, 
-      separator: ' ', 
-      omission: '' 
+    baseFilename = _.truncate(title.trim(), {
+      length: maxLength,
+      separator: ' ',
+      omission: ''
     });
   } else {
     baseFilename = fallbackName;
   }
-  
+
   return sanitizeFilename(`${baseFilename}.${fileExtension}`, { replacement });
 }
 
@@ -104,7 +104,7 @@ function validateAudioUrl(url, allowedExtensions = ['mp3', 'm4a', 'wav', 'ogg', 
   if (!url || !validator.isURL(String(url))) {
     return false;
   }
-  
+
   try {
     const urlPath = new URL(url).pathname.toLowerCase();
     return allowedExtensions.some(ext => urlPath.includes(`.${ext}`));
@@ -120,16 +120,16 @@ function validateAudioUrl(url, allowedExtensions = ['mp3', 'm4a', 'wav', 'ogg', 
  */
 function getMimeTypeFromExtension(extension) {
   if (!extension) return null;
-  
+
   const cleanExtension = extension.replace(/^\./, '').toLowerCase();
-  
+
   // Reverse lookup in AUDIO_MIME_TYPES
   for (const [mimeType, ext] of Object.entries(AUDIO_MIME_TYPES)) {
     if (ext === cleanExtension) {
       return mimeType;
     }
   }
-  
+
   return null;
 }
 
@@ -140,7 +140,7 @@ function getMimeTypeFromExtension(extension) {
  */
 function parseContentLength(contentLength) {
   if (contentLength == null || contentLength === '') return null;
-  
+
   const size = parseInt(contentLength);
   return isNaN(size) ? null : size;
 }
@@ -155,11 +155,34 @@ function parseContentLength(contentLength) {
  */
 function validateFileSize(sizeInBytes, limits = {}) {
   const { minSize = 1024, maxSize = 500 * 1024 * 1024 } = limits; // Default: 1KB - 500MB
-  
+
   if (!sizeInBytes || sizeInBytes < minSize) return false;
   if (sizeInBytes > maxSize) return false;
-  
+
   return true;
+}
+
+/**
+ * Format file size in bytes to human-readable format
+ * @param {number} bytes - File size in bytes
+ * @param {Object} options - Formatting options
+ * @param {number} options.precision - Decimal places (default: 1)
+ * @param {Array} options.units - Array of unit names (default: ['B', 'KB', 'MB', 'GB', 'TB'])
+ * @returns {string} Formatted file size string (empty string for 0 or invalid input)
+ */
+function formatFileSize(bytes, options = {}) {
+  const { precision = 1, units = ['B', 'KB', 'MB', 'GB', 'TB'] } = options;
+
+  if (bytes === 0 || !bytes || isNaN(bytes)) return '';
+
+  const k = 1024;
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  // Handle cases where the size is larger than our units array
+  const unitIndex = Math.min(i, units.length - 1);
+  const size = parseFloat((bytes / Math.pow(k, unitIndex)).toFixed(precision));
+
+  return `${size} ${units[unitIndex]}`;
 }
 
 module.exports = {
@@ -169,5 +192,6 @@ module.exports = {
   validateAudioUrl,
   getMimeTypeFromExtension,
   parseContentLength,
-  validateFileSize
+  validateFileSize,
+  formatFileSize
 };
