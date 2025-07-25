@@ -1,4 +1,8 @@
 {
+  "name": "sww-n8n-helpers",
+  "version": "1.0.0",
+  "description": "Comprehensive utilities for content processing, SQL sanitization, and data validation in n8n workflows",
+  "main": "index.js",
   "license": "MIT",
   "repository": {
     "type": "git",
