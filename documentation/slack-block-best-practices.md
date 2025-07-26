@@ -3,6 +3,126 @@
 ## Overview
 This guide outlines best practices for creating robust, visually appealing, and reliable Slack Block Kit messages based on real-world experience and common pitfalls.
 
+**🆕 NEW:** We now provide a comprehensive `slack-blocks.js` utility library with built-in validation and safety features. See the [Slack Blocks Documentation](./slack-blocks.md) for the new recommended approach.
+
+## Quick Start with New Utilities
+
+For new development, use the validated utilities from `sww-n8n-helpers`:
+
+```javascript
+const { 
+  createContentNotification,
+  createHeader,
+  createSection,
+  createActionButtons,
+  BUTTON_STYLES 
+} = require('sww-n8n-helpers');
+
+// Simple approach - use the template
+const message = createContentNotification({
+  title: "Workflow Failed", 
+  source: "Data Processing",
+  summary: "Validation step encountered an error",
+  urls: { "View Details": executionUrl },
+  metadata: { timestamp: new Date().toLocaleString() }
+}, { emoji: "🔴", type: "Alert" });
+
+// Or compose manually with validated helpers
+const blocks = [
+  createHeader("🔴 Workflow Alert"),
+  createSection("*Data Processing* workflow failed", { textType: TEXT_TYPES.MRKDWN }),
+  createActionButtons({ "View Details": executionUrl }, { primaryButton: "View Details" })
+];
+```
+
+**Benefits of the new approach:**
+- ✅ **Automatic validation** - Invalid field values are caught and warned about
+- ✅ **URL validation** - Malformed URLs return null instead of breaking messages  
+- ✅ **Length limits** - Text is automatically truncated to Slack's limits
+- ✅ **Constants** - Use `BUTTON_STYLES.PRIMARY` instead of magic strings
+- ✅ **Null safety** - Functions handle null/empty inputs gracefully
+
+## Migration Guide
+
+### From Manual Blocks to Utilities
+
+**Old approach (manual block building):**
+```javascript
+// Manual, error-prone approach
+const blocks = [
+  {
+    "type": "header",
+    "text": {
+      "type": "plain_text",
+      "text": `🔴 ${title}`, // Could exceed 150 char limit
+      "emoji": true
+    }
+  },
+  {
+    "type": "actions", 
+    "elements": [
+      {
+        "type": "button",
+        "text": { "type": "plain_text", "text": "View Details" },
+        "style": "primary", // Magic string - could be invalid
+        "url": url // Could be malformed
+      }
+    ]
+  }
+];
+```
+
+**New approach (with utilities):**
+```javascript
+const { createHeader, createActionButtons, BUTTON_STYLES } = require('sww-n8n-helpers');
+
+// Validated, safe approach
+const blocks = [
+  createHeader(`🔴 ${title}`), // Automatically truncates to 150 chars
+  createActionButtons(
+    { "View Details": url }, // URL automatically validated
+    { primaryButton: "View Details" } // Uses BUTTON_STYLES.PRIMARY internally
+  )
+].filter(block => block !== null); // Remove any null blocks from invalid inputs
+```
+
+### Common Patterns Comparison
+
+**Status Messages:**
+```javascript
+// Old way
+const statusBlock = {
+  "type": "rich_text",
+  "elements": [{
+    "type": "rich_text_section",
+    "elements": [
+      { "type": "text", "text": "Status: ", "style": { "bold": true } },
+      { "type": "text", "text": status }
+    ]
+  }]
+};
+
+// New way  
+const statusBlock = createKeyValueBlock("Status", status);
+```
+
+**Content Notifications:**
+```javascript
+// Old way - lots of manual work
+const blocks = [
+  { "type": "header", "text": { "type": "plain_text", "text": `📄 ${source}` } },
+  { "type": "section", "text": { "type": "mrkdwn", "text": `*${title}*\n${summary}` } },
+  { "type": "divider" },
+  { "type": "actions", "elements": [/* manual button building */] }
+];
+
+// New way - one function call
+const message = createContentNotification({
+  title, source, summary,
+  urls: { "View": viewUrl, "Download": downloadUrl }
+});
+```
+
 ## Core Principles
 
 ### 1. Always Include Fallback Text
@@ -426,8 +546,91 @@ if (needsDetailedView) {
 }
 ```
 
+## Best Practices with New Utilities
+
+### 1. Use Constants Instead of Magic Strings
+```javascript
+// ✅ Good - uses validated constants
+const { BUTTON_STYLES, TEXT_TYPES } = require('sww-n8n-helpers');
+
+createButton("Action", url, { style: BUTTON_STYLES.PRIMARY });
+createSection(text, { textType: TEXT_TYPES.MRKDWN });
+
+// ❌ Bad - magic strings can be invalid
+createButton("Action", url, { style: "primary" }); // Works but not validated
+createButton("Action", url, { style: "invalid" }); // Will warn and use default
+```
+
+### 2. Handle Null Returns Gracefully
+```javascript
+// ✅ Good - filter out null blocks
+const blocks = [
+  createHeader(title),
+  createKeyValueBlock("Status", status), // Might return null if status is empty
+  createActionButtons(urls) // Might return null if no valid URLs
+].filter(block => block !== null);
+
+// ✅ Good - check before adding
+const actionBlock = createActionButtons(urls);
+if (actionBlock) blocks.push(actionBlock);
+```
+
+### 3. Leverage Templates for Common Patterns
+```javascript
+// ✅ Good - use templates for standard layouts
+const message = createContentNotification(episodeData, { 
+  emoji: "🎧", 
+  type: "Podcast Episode" 
+});
+
+// ✅ Good - compose custom layouts when needed
+const blocks = [
+  createMessageHeader("Custom Layout", "⚙️"),
+  createSection("Custom content"),
+  createDivider(),
+  // ... custom blocks
+];
+```
+
+### 4. Monitor Console Warnings
+The utilities will warn about validation issues:
+```javascript
+// This will log: "Invalid button style: 'invalid'. Allowed values: default, primary, danger. Using default: null"
+createButton("Test", "https://example.com", { style: "invalid" });
+
+// Pay attention to these warnings in your n8n logs
+```
+
+### 5. Combine with Batch Processing
+```javascript
+const { processItemsWithPairing, createContentNotification } = require('sww-n8n-helpers');
+
+const result = await processItemsWithPairing(
+  $input.all(),
+  ($item, $json, $itemIndex) => {
+    // Each item becomes a Slack notification
+    return createContentNotification({
+      title: $json.title,
+      source: $json.podcastName,
+      summary: $json.description,
+      urls: { "Listen": $json.episodeUrl }
+    });
+  },
+  {},
+  { maintainPairing: true }
+);
+```
+
 ## Key Takeaways
 
+### For New Development (Recommended)
+1. **Use the slack-blocks utilities** - Built-in validation and safety
+2. **Use constants** - `BUTTON_STYLES.PRIMARY` instead of `"primary"`
+3. **Handle null returns** - Filter out or check before using
+4. **Start with templates** - Use `createContentNotification()` for common patterns
+5. **Monitor warnings** - Check console for validation issues
+
+### For Existing Code (Legacy Principles)
 1. **Always include fallback text** - Critical for accessibility and reliability
 2. **Use JSON.stringify() for all dynamic content** - Prevents injection and JSON breaks
 3. **Respect length limits** - Truncate text appropriately for each block type
@@ -438,5 +641,11 @@ if (needsDetailedView) {
 8. **Use appropriate block types** - Headers for titles, sections for content, context for metadata
 9. **Maintain visual hierarchy** - Structure blocks from most to least important
 10. **Handle errors gracefully** - Never let block generation failures break workflows
+
+## Migration Recommendation
+
+**For new Slack message development**: Use the new utilities from `sww-n8n-helpers` with built-in validation.
+
+**For existing code**: Consider migrating to the new utilities during maintenance, but the manual approach documented here will continue to work.
 
 Following these patterns ensures your Slack messages are reliable, accessible, visually appealing, and maintainable across different use cases and data scenarios.

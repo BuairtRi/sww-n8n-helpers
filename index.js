@@ -36,6 +36,7 @@ const dataTransform = require('./src/data-transform');
 const sql = require('./src/sql');
 const sqlSanitization = require('./src/sql-sanitization'); // Legacy compatibility
 const n8n = require('./src/n8n');
+const slackBlocks = require('./src/slack-blocks');
 
 // Export all functions from all modules (individual imports)
 // AND module namespaces (namespace imports)
@@ -50,6 +51,7 @@ module.exports = {
   ...sql,
   ...sqlSanitization, // Legacy exports for backward compatibility
   ...n8n,
+  ...slackBlocks,
 
   // Version and debugging functions
   getVersion,
@@ -64,7 +66,8 @@ module.exports = {
   dataTransform,
   sql,
   sqlSanitization, // Legacy - use dataTransform + sql instead
-  n8n
+  n8n,
+  slackBlocks
 };
 
 // ESM export for modern environments
