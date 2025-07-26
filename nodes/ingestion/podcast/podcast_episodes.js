@@ -3,7 +3,7 @@
 // Placed directly after Check Podcast Feed node
 
 const { 
-  processItemsWithN8N,
+  processItemsWithAccessors,
   parseDurationToSeconds,
   formatFriendlyDuration,
   generateSafeFileName,
@@ -20,15 +20,12 @@ const _ = require('lodash');
 const prettyBytes = require('pretty-bytes');
 const moment = require('moment');
 
-// Create batch processing helpers with bound $ function
-const { processItems } = processItemsWithN8N($);
-
 const feedItems = $input.all();
 
 console.log(`Processing ${feedItems.length} feed items`);
 
 // Process each feed item using the modern batch processing utility
-const batchResult = processItems(feedItems, ($item, $json, $itemIndex) => {
+const batchResult = await processItemsWithAccessors(feedItems, ($item, $json, $itemIndex) => {
   const episode = $json;
   
   // Extract and validate audio URL using utility
@@ -132,8 +129,17 @@ const batchResult = processItems(feedItems, ($item, $json, $itemIndex) => {
     }`);
   }
   
-  // Process publication date using validation utility with moment fallback
-  const validatedDate = validateAndFormatDate(normalizedEpisode.publicationDate);
+  // Process publication date using enhanced moment.js validation utility
+  const validatedDate = validateAndFormatDate(normalizedEpisode.publicationDate, {
+    format: [
+      'YYYY-MM-DD[T]HH:mm:ss.SSSZ',  // ISO with milliseconds
+      'YYYY-MM-DD[T]HH:mm:ssZ',      // ISO without milliseconds
+      'ddd, DD MMM YYYY HH:mm:ss ZZ', // RSS pubDate format
+      'YYYY-MM-DD HH:mm:ss',         // Generic datetime
+      'YYYY-MM-DD'                   // Date only
+    ]
+  });
+  
   if (validatedDate) {
     normalizedEpisode.publicationDate = validatedDate;
     normalizedEpisode.publicationDateFriendly = moment(validatedDate).format('MMMM D, YYYY');
@@ -169,7 +175,7 @@ const batchResult = processItems(feedItems, ($item, $json, $itemIndex) => {
   
   return normalizedEpisode;
   
-}, [], {
+}, {}, {
   logErrors: true,
   stopOnError: false
 });

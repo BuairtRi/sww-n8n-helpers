@@ -1,71 +1,79 @@
-# n8n Code Node Best Practices for Data Normalization
+# n8n Code Node Best Practices for Data Processing
 
 ## Overview
-This guide outlines best practices for creating robust data normalization code nodes in n8n workflows, based on real-world podcast RSS feed processing experience.
+This guide outlines best practices for creating robust data processing code nodes in n8n workflows using modern batch processing patterns with `sww-n8n-helpers`. These patterns provide automatic error handling, context injection, and maintain n8n item pairing.
 
-## Core Principles
+## Modern Approach: Use sww-n8n-helpers Batch Processing
 
-### 1. Item Linking and Pairing
-**Always maintain item relationships throughout the workflow**
-
-```javascript
-// Good: Preserve item pairing
-outputItems.push({
-  json: normalizedData,
-  pairedItem: itemIndex
-});
-
-// Bad: Breaking the chain
-return normalizedData; // Loses pairing information
-```
-
-**Why it matters:**
-- Enables proper error tracking through the workflow
-- Allows downstream nodes to reference original data
-- Critical for debugging failed items
-
-### 2. Graceful Error Handling
-**Never let one bad item break the entire workflow**
+### 1. Automatic Item Pairing and Error Handling
+**Use `processItemsWithN8N($)` for automatic context injection and error handling**
 
 ```javascript
-try {
-  // Process item
-  const normalized = processItem(item);
-  outputItems.push({ json: normalized, pairedItem: index });
-} catch (error) {
-  // Still output an error item to maintain pairing
-  outputItems.push({
-    json: {
-      _error: {
-        type: 'processing_error',
-        message: error.message,
-        originalData: { id: item.id, title: item.title }
-      },
-      // Include minimal identifying data
-      id: item.id || null,
-      title: item.title || 'Unknown'
-    },
-    pairedItem: index
-  });
-}
+const { processItemsWithN8N } = require('sww-n8n-helpers');
+const { processItems } = processItemsWithN8N($);
+
+const inputItems = $input.all();
+
+// Automatic item pairing and error handling
+const result = await processItems(
+  inputItems,
+  ($item, $json, $itemIndex) => {
+    // Process individual item - errors are automatically handled
+    return {
+      id: $json.id,
+      title: $json.title?.toUpperCase(),
+      processedAt: new Date().toISOString(),
+      itemIndex: $itemIndex
+    };
+  }
+);
+
+// Returns results with automatic pairing maintained
+return result.results;
 ```
 
-### 3. Data Source Management
-**Be explicit about where data comes from**
+**Benefits:**
+- Automatic item pairing maintenance
+- Built-in error handling and statistics
+- Context injection (`$item`, `$json`, `$itemIndex`)
+- No manual try/catch blocks needed
+- Defensive node data access with retries
+
+### 2. Multi-Node Data Access
+**Use automatic node data injection for accessing multiple data sources**
 
 ```javascript
-// When placed after a specific node
-const items = $input.all();  // Gets from previous node
+const { processItemsWithN8N } = require('sww-n8n-helpers');
+const { processItems } = processItemsWithN8N($);
 
-// When needing data from a specific named node
-const sourceItems = $('Node Name').all();
+const inputItems = $input.all();
 
-// Don't assume data structure - check first
-console.log(`Processing ${items.length} items`);
-if (items.length > 0) {
-  console.log('First item structure:', JSON.stringify(items[0].json, null, 2));
-}
+// Automatic extraction of data from other nodes with retry logic
+const result = await processItems(
+  inputItems,
+  // Node data automatically injected as camelCase parameters
+  ($item, $json, $itemIndex, knowledgeSource, userSettings) => {
+    return {
+      id: $json.id,
+      title: $json.title,
+      // Defensive access to node data (automatically retried and validated)
+      sourceId: knowledgeSource?.knowledgeSourceId || null,
+      userNotifications: userSettings?.enableNotifications || false,
+      processedAt: new Date().toISOString()
+    };
+  },
+  ['Knowledge Source', 'User Settings'], // Automatically converted to camelCase params
+  { logErrors: true }
+);
+
+return result.results;
 ```
+
+**Benefits:**
+- Automatic retry logic for node data access
+- Node name to camelCase parameter conversion
+- Built-in validation and defensive access
+- No manual `$('Node Name')` calls needed
 
 ## Data Normalization Patterns
 
@@ -128,28 +136,38 @@ const normalized = {
 };
 ```
 
-### 4. SQL Safety
-**Always provide SQL-safe versions of text fields**
+### 4. SQL Safety with tsqlstring
+**Use sww-n8n-helpers SQL sanitization (powered by tsqlstring) for robust SQL injection prevention**
 
 ```javascript
-function sanitizeForSQL(text) {
-  if (!text) return null;
-  return text
-    .replace(/'/g, "''")      // Escape single quotes
-    .replace(/\\/g, "\\\\")   // Escape backslashes
-    .replace(/\0/g, "")       // Remove null characters
-    .trim();
-}
+const { sanitizeItemsBatch } = require('sww-n8n-helpers');
 
-// Provide both versions
-const normalized = {
-  title: episode.title,
-  titleSanitized: sanitizeForSQL(episode.title),
-  
-  description: cleanDescription,
-  descriptionSanitized: sanitizeForSQL(cleanDescription)
-};
+// Modern approach: Batch sanitization with tsqlstring
+const sqlSafeResults = sanitizeItemsBatch(inputItems, {
+  fieldsToProcess: ['title', 'description', 'author'],
+  includeValidation: true,
+  maintainPairing: true
+});
+
+// Or individual field sanitization
+const { sanitizeForSQL, sanitizeByFieldType } = require('sww-n8n-helpers');
+
+const result = await processItems(
+  inputItems,
+  ($item, $json, $itemIndex) => {
+    return {
+      title: $json.title,
+      // Uses tsqlstring internally for T-SQL/SQL Server safety
+      titleSanitized: sanitizeByFieldType($json.title, 'title'),
+      
+      description: $json.description,
+      descriptionSanitized: sanitizeForSQL($json.description, { maxLength: 4000 })
+    };
+  }
+);
 ```
+
+**⚠️ CRITICAL**: Manual SQL escaping is dangerous and incomplete. Always use the sww-n8n-helpers SQL functions which rely on `tsqlstring` for proper T-SQL/SQL Server escaping.
 
 ## Data Validation Strategies
 
@@ -272,77 +290,111 @@ console.error(`Failed to process item: ${error.message}`, {
 });
 ```
 
-## Complete Example Structure
+## Modern Complete Example
 
 ```javascript
-// n8n Code Node: Data Normalization Template
+// n8n Code Node: Modern Data Processing with sww-n8n-helpers
+const { processItemsWithN8N, truncateWithSeparator, validateAndFormatDate } = require('sww-n8n-helpers');
+const { processItems } = processItemsWithN8N($);
+
 const inputItems = $input.all();
-const outputItems = [];
 
-// Helper functions
-function safeGet(obj, path, defaultValue = null) { /* ... */ }
-function truncateText(text, maxLength) { /* ... */ }
-function sanitizeForSQL(text) { /* ... */ }
-
-// Process items
-for (let i = 0; i < inputItems.length; i++) {
-  const item = inputItems[i];
-  
-  try {
-    const normalized = {
-      // Core fields
-      id: item.json.id || null,
-      title: truncateText(item.json.title, 250),
-      titleSanitized: sanitizeForSQL(item.json.title),
-      
-      // Multiple formats
-      date: new Date(item.json.date).toISOString(),
-      dateFriendly: formatDate(item.json.date),
-      
-      // Metadata
-      _original: { id: item.json.id },
-      processingMetadata: {
-        normalizedAt: new Date().toISOString(),
-        itemIndex: i
-      }
-    };
-    
-    // Validate
-    if (!normalized.id) {
-      normalized._error = { type: 'missing_id' };
+// Process with automatic error handling and context injection
+const result = await processItems(
+  inputItems,
+  ($item, $json, $itemIndex, sourceConfig, userSettings) => {
+    // Validation with automatic error handling
+    if (!$json.id) {
+      throw new Error('Missing required ID field');
     }
     
-    outputItems.push({
-      json: normalized,
-      pairedItem: i
-    });
-    
-  } catch (error) {
-    // Error item maintains pairing
-    outputItems.push({
-      json: {
-        _error: {
-          type: 'processing_error',
-          message: error.message
-        },
-        id: item.json.id || null
-      },
-      pairedItem: i
-    });
+    return {
+      // Core fields with helper functions
+      id: $json.id,
+      title: truncateWithSeparator($json.title, 250, ' '),
+      
+      // Date handling
+      date: validateAndFormatDate($json.date),
+      
+      // Node data with defensive access
+      maxLength: sourceConfig?.textLimit || 4000,
+      enableNotifications: userSettings?.notifications || false,
+      
+      // Processing metadata
+      processingMetadata: {
+        processedAt: new Date().toISOString(),
+        itemIndex: $itemIndex,
+        hasSourceConfig: !!sourceConfig
+      }
+    };
+  },
+  ['Source Config', 'User Settings'], // Automatic node data injection
+  {
+    logErrors: true,
+    stopOnError: false
   }
+);
+
+// Check processing statistics
+console.log(`Processed: ${result.stats.successful}/${result.stats.total}`);
+if (result.errors.length > 0) {
+  console.log(`Errors: ${result.errors.length}`);
+  result.errors.forEach(error => {
+    console.log(`- Item ${error.itemIndex}: ${error.message}`);
+  });
 }
 
-return outputItems;
+return result.results;
+```
+
+### SQL-Safe Version
+
+```javascript
+// For data going to SQL Server: Use batch sanitization
+const { processItemsWithN8N, sanitizeItemsBatch } = require('sww-n8n-helpers');
+
+// First: Process and normalize data
+const { processItems } = processItemsWithN8N($);
+const normalizedResult = await processItems(
+  $input.all(),
+  ($item, $json, $itemIndex) => ({
+    id: $json.id,
+    title: $json.title,
+    description: $json.description,
+    author: $json.author,
+    url: $json.url
+  })
+);
+
+// Second: SQL sanitization with tsqlstring
+const sqlSafeResults = sanitizeItemsBatch(
+  normalizedResult.results.map(item => item.json),
+  {
+    fieldMappings: {
+      title: { type: 'title', maxLength: 250 },
+      description: { type: 'content', maxLength: 4000 },
+      author: { type: 'name', maxLength: 500 },
+      url: { type: 'url', maxLength: 2000 }
+    },
+    includeValidation: true,
+    maintainPairing: true
+  }
+);
+
+return sqlSafeResults;
 ```
 
 ## Key Takeaways
 
-1. **Always maintain item pairing** - Critical for n8n's error handling
-2. **Handle errors gracefully** - Don't let bad data break the workflow
-3. **Provide multiple data formats** - Optimize for different use cases
-4. **Sanitize for SQL** - Prevent injection issues
-5. **Include debugging metadata** - Makes troubleshooting easier
-6. **Use helper functions** - Keep code DRY and maintainable
-7. **Validate but don't drop** - Mark invalid items instead of removing them
+1. **Use `processItemsWithN8N($)`** - Modern batch processing with automatic error handling
+2. **Leverage automatic context injection** - Get `$item`, `$json`, `$itemIndex` automatically  
+3. **Use multi-node data access** - Let the framework handle defensive node data retrieval
+4. **Use sww-n8n-helpers SQL functions** - Critical dependency on `tsqlstring` for SQL Server safety
+5. **Rely on automatic item pairing** - No manual pairing management needed
+6. **Let errors flow through** - Framework handles error items while maintaining pairing
+7. **Monitor processing statistics** - Use `result.stats` and `result.errors` for insights
+8. **Use helper functions from sww-n8n-helpers** - Built-in text processing, validation, and formatting
 
-Following these patterns ensures your normalization nodes are robust, debuggable, and maintain data integrity throughout your n8n workflows.
+**Migration Path**: Replace manual for-loops and try/catch blocks with `processItemsWithN8N($).processItems()` for automatic error handling, context injection, and defensive node data access.
+
+Following these modern patterns ensures your processing nodes are robust, maintainable, and leverage the full power of the sww-n8n-helpers framework.

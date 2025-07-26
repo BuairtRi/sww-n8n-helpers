@@ -1,7 +1,7 @@
 // n8n Code Node: Group Knowledge Source Quality Check Configurations
 // Groups SQL query results by KnowledgeSourceId using sww-n8n-helpers utilities
 
-const { processItemsWithN8N, validation } = require('sww-n8n-helpers');
+const { processItemsWithAccessors, validation } = require('sww-n8n-helpers');
 
 const items = $input.all();
 
@@ -12,10 +12,21 @@ if (items.length === 0) {
 
 console.log(`Processing ${items.length} quality check configurations from SQL query`);
 
-// Helper function to format date using validation utilities
+// Helper function to format date using enhanced moment.js validation utilities
 function formatDate(dateStr) {
     if (!dateStr) return null;
-    const formatted = validation.validateAndFormatDate(dateStr);
+    
+    // Try common SQL Server and ISO formats first for better parsing
+    const formatted = validation.validateAndFormatDate(dateStr, {
+        format: [
+            'YYYY-MM-DD HH:mm:ss.SSS',  // SQL Server datetime
+            'YYYY-MM-DD HH:mm:ss',      // SQL Server datetime2
+            'YYYY-MM-DDTHH:mm:ss.SSSZ', // ISO with timezone
+            'YYYY-MM-DDTHH:mm:ssZ',     // ISO without milliseconds
+            'YYYY-MM-DD'                // Date only
+        ]
+    });
+    
     return formatted || dateStr; // Return original if validation fails
 }
 
@@ -91,20 +102,16 @@ items.forEach(item => {
     }
 });
 
-// Convert groups to output items using processItemsWithPairing for consistency
-const groupedItems = Array.from(sourceGroups.values()).map((group, index) => ({
-    json: group,
-    index: index
+// Convert groups to output items for batch processing
+const groupedItems = Array.from(sourceGroups.values()).map((group) => ({
+    json: group
 }));
 
-// Create N8N batch processing helpers with bound $ function
-const { processItems } = processItemsWithN8N($);
-
 // Process with modern batch processing and add summary info
-const result = await processItems(
+const result = await processItemsWithAccessors(
     groupedItems,
     // Processor receives: $item, $json, $itemIndex
-    ($item, $json, $itemIndex) => {
+    (_$item, $json, _$itemIndex) => {
         const group = $json;
 
         // Add summary info
@@ -118,7 +125,7 @@ const result = await processItems(
 
         return group;
     },
-    [], // No additional nodes needed
+    {}, // No additional nodes needed
     {
         logErrors: true,
         stopOnError: false

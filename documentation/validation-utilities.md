@@ -104,19 +104,50 @@ const phone3 = validatePhone('123', 'any');
 
 ### `validateAndFormatDate(date, options)`
 
-Validate dates and return ISO format.
+Validate dates and return ISO format using moment.js for robust parsing.
+
+**Parameters:**
+- `date` (string|Date): Date to validate
+- `options` (Object): Validation options
+  - `strict` (boolean): Strict date validation (default: false)
+  - `format` (string|Array): Expected date format(s) for moment parsing
 
 ```javascript
 const { validateAndFormatDate } = require('sww-n8n-helpers');
 
+// Basic parsing (auto-detects format)
 const date1 = validateAndFormatDate('2024-01-15');
 // Returns: '2024-01-15T00:00:00.000Z'
 
 const date2 = validateAndFormatDate('invalid-date');
 // Returns: null
 
+// Strict year validation
 const date3 = validateAndFormatDate('1800-01-01', { strict: true });
 // Returns: null (year too old in strict mode)
+
+// Parse with specific format
+const date4 = validateAndFormatDate('15/01/2024', { format: 'DD/MM/YYYY' });
+// Returns: '2024-01-15T00:00:00.000Z'
+
+// Multiple accepted formats
+const date5 = validateAndFormatDate('Jan 15, 2024', { 
+  format: ['MMM DD, YYYY', 'YYYY-MM-DD', 'DD/MM/YYYY'] 
+});
+// Returns: '2024-01-15T00:00:00.000Z'
+
+// Strict format parsing (exact format match required)
+const date6 = validateAndFormatDate('15/01/24', { 
+  format: 'DD/MM/YYYY', 
+  strict: true 
+});
+// Returns: null (strict format requires 4-digit year)
+
+// Common date formats that work automatically
+const date7 = validateAndFormatDate('2024-01-15T10:30:00Z');
+const date8 = validateAndFormatDate('January 15, 2024');
+const date9 = validateAndFormatDate('2024/01/15');
+// All return proper ISO strings
 ```
 
 ### `validateNumericRange(value, range)`

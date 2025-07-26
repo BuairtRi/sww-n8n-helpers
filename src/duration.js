@@ -2,6 +2,7 @@
 // Duration parsing and formatting utilities
 
 const parseDuration = require('parse-duration');
+const { createParsingError, logError } = require('./error');
 
 /**
  * Parse various duration formats to seconds

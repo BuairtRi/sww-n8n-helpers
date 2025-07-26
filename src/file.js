@@ -4,6 +4,7 @@
 const validator = require('validator');
 const sanitizeFilename = require('sanitize-filename');
 const _ = require('lodash');
+const { createFileOperationError, createValidationError, logError } = require('./error');
 
 /**
  * Comprehensive MIME type to file extension mapping

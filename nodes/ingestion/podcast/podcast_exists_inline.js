@@ -1,26 +1,25 @@
-// n8n Code Node: Generate Podcast Existence Check SQL (Batch Mode)
-// Uses sww-n8n-helpers utilities for safe SQL generation
+// n8n Code Node: Generate Podcast Existence Check SQL (Batch Mode) - Updated Version
+// Now using the new accessor pattern to preserve itemMatching behavior
 // Handles multiple podcast episodes in "Run Once for All Items" mode
 
-const { 
-  processItemsWithN8N,
-  sanitizeForSQL
-} = require('sww-n8n-helpers');
-
-// Create batch processing helpers with bound $ function
-const { processItems } = processItemsWithN8N($);
+const { processItemsWithAccessors, sanitizeForSQL } = require('sww-n8n-helpers');
 
 // Get all input items (podcast episodes)
 const podcastEpisodes = $input.all();
 
-console.log(`Processing ${podcastEpisodes.length} podcast episodes for existence check`);
+console.log(`Processing ${podcastEpisodes.length} podcast episodes for existence check (accessor version)`);
 
-// Process each podcast episode with modern batch utility
-const result = await processItems(
+// Define node accessors that preserve itemMatching behavior
+const nodeAccessors = {
+  'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json
+};
+
+// Process each podcast episode using accessor pattern
+const result = await processItemsWithAccessors(
   podcastEpisodes,
-  // Processor receives: $item, $json, $itemIndex, ingestionSources (camelCase from "Ingestion Sources")
+  // Processor receives: $item, $json, $itemIndex, ingestionSources (from accessor)
   (_$item, json, itemIndex, ingestionSources) => {
-    // Validate required data - now using clean camelCase parameter name
+    // Validate required data
     if (!ingestionSources?.knowledgeSourceId) {
       throw new Error(`Missing knowledgeSourceId from Ingestion Sources node for item ${itemIndex}`);
     }
@@ -56,26 +55,26 @@ SELECT CASE
 END as episode_exists
 `;
 
-  return {
-    query: query,
-    parameters: {
-      knowledgeSourceId: ingestionSources.knowledgeSourceId,
-      episodeGuid: json.episodeGuid,
-      episodeTitle: json.title,
-      publicationDate: json.publicationDate
-    },
-    metadata: {
-      generatedAt: new Date().toISOString(),
-      checkType: 'podcast_episode_existence',
-      primaryCheck: json.episodeGuid ? 'guid' : 'title_date',
-      hasGuid: !!json.episodeGuid,
-      hasTitle: !!json.title,
-      hasDate: !!json.publicationDate,
-      itemIndex: itemIndex
-    }
-  };
+    return {
+      query: query,
+      parameters: {
+        knowledgeSourceId: ingestionSources.knowledgeSourceId,
+        episodeGuid: json.episodeGuid,
+        episodeTitle: json.title,
+        publicationDate: json.publicationDate
+      },
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        checkType: 'podcast_episode_existence',
+        primaryCheck: json.episodeGuid ? 'guid' : 'title_date',
+        hasGuid: !!json.episodeGuid,
+        hasTitle: !!json.title,
+        hasDate: !!json.publicationDate,
+        itemIndex: itemIndex
+      }
+    };
   },
-  ['Ingestion Sources'], // Node names to extract data from
+  nodeAccessors,
   {
     logErrors: true,
     stopOnError: false
@@ -84,5 +83,9 @@ END as episode_exists
 
 console.log(`Generated ${result.results.length} podcast existence check queries`);
 console.log(`Processing stats: ${result.stats.successful}/${result.stats.total} successful`);
+
+if (result.errors.length > 0) {
+  console.log('Errors encountered:', result.errors);
+}
 
 return result.results;

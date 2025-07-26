@@ -17,27 +17,31 @@ const { batch } = require('sww-n8n-helpers');
 
 ## Core Function: `processItemsWithN8N($)`
 
-This factory function takes n8n's `$` function and returns helper methods optimized for n8n workflows.
+This factory function takes n8n's `$` function and returns helper methods optimized for n8n workflows with automatic context injection and defensive node data access.
 
 ### `processItems(items, processor, nodeNames, options)`
 
-Process an array of n8n items with automatic context injection and node data retrieval.
+Process an array of n8n items with automatic context injection and safe node data retrieval with retry logic.
 
 **Parameters:**
 - `items` (Array): N8N items from `$input.all()` or `$('NodeName').all()`
-- `processor` (Function): Processing function that receives context variables
-- `nodeNames` (Array): Array of node names to extract data for each item (optional)
+- `processor` (Function): Processing function that receives: `($item, $json, $itemIndex, ...nodeData)`
+  - `$item`: Full n8n item object
+  - `$json`: Item's json data
+  - `$itemIndex`: Current item index
+  - `...nodeData`: Individual node data in nodeNames array order with camelCase parameter names
+- `nodeNames` (Array): Array of node names to extract data for each item (can contain spaces/special chars)
 - `options` (Object): Processing options
-  - `batchSize` (Number): Process in batches of this size (default: null)
   - `logErrors` (Boolean): Log processing errors (default: true)
   - `stopOnError` (Boolean): Stop processing on first error (default: false)
-  - `concurrency` (Number): For parallel processing (default: 1 = sequential)
 
 **Returns:** Object with `{ results, errors, stats }`
 
-### `filterAndProcess(items, filterFn, processor, nodeNames, options)`
-
-Filter items based on conditions and process only the matching ones with the same context injection.
+**Node Name to Parameter Mapping:**
+Node names are automatically converted to camelCase parameters:
+- `'Ingestion Sources'` → `ingestionSources`
+- `'User Settings'` → `userSettings`
+- `'API_Config'` → `apiConfig`
 
 ## Code Node Examples
 
@@ -62,7 +66,7 @@ const result = await processItems(
       id: $json.id,
       processedTitle: $json.title.toUpperCase(),
       itemIndex: $itemIndex,
-      timestamp: $now()
+      timestamp: new Date().toISOString()
     };
   }
 );
@@ -82,28 +86,27 @@ const inputData = $input.all();
 // Extract data from "User Settings" and "API Config" nodes for each item
 const result = await processItems(
   inputData,
-  // Processor receives context + data from specified nodes
+  // Processor receives context + data from specified nodes (camelCase params)
   ($item, $json, $itemIndex, userSettings, apiConfig) => {
     return {
       userId: $json.id,
       email: $json.email,
-      // Use data from other nodes
+      // Use data from other nodes with defensive access
       notifications: userSettings?.notifications || true,
       apiEndpoint: apiConfig?.endpoint || 'https://api.default.com',
-      processedAt: $now()
+      processedAt: new Date().toISOString()
     };
   },
-  ['User Settings', 'API Config'], // Node names to extract data from
+  ['User Settings', 'API Config'], // Node names - automatically converted to camelCase
   {
-    logErrors: true,
-    batchSize: 50 // Process in batches of 50
+    logErrors: true
   }
 );
 
 return result.results;
 ```
 
-### Parallel Processing for I/O Operations
+### Async Processing with External APIs
 
 ```javascript
 const { processItemsWithN8N } = require('sww-n8n-helpers');
@@ -122,7 +125,8 @@ const result = await processItems(
       return {
         id: $json.id,
         enrichedData: userData,
-        processed: true
+        processed: true,
+        processedAt: new Date().toISOString()
       };
     } catch (error) {
       throw new Error(`API call failed for user ${$json.id}: ${error.message}`);
@@ -130,7 +134,6 @@ const result = await processItems(
   },
   [], // No additional nodes needed
   {
-    concurrency: 3, // Process 3 items in parallel
     logErrors: true
   }
 );
@@ -142,39 +145,36 @@ console.log(`Success rate: ${(result.stats.successRate * 100).toFixed(1)}%`);
 return result.results;
 ```
 
-### Filter and Process Pattern
+### Processing with Node Data from Multiple Sources
 
 ```javascript
 const { processItemsWithN8N } = require('sww-n8n-helpers');
-const { filterAndProcess } = processItemsWithN8N($);
+const { processItems } = processItemsWithN8N($);
 
 const inputData = $input.all();
 
-const result = await filterAndProcess(
+// Extract data from multiple nodes with automatic retry and defensive access
+const result = await processItems(
   inputData,
-  // Filter function with context injection
-  ($item, $json, $itemIndex) => {
-    return $json.email && $json.email.includes('@') && $json.active === true;
-  },
-  // Processor function for filtered items
-  ($item, $json, $itemIndex) => {
+  ($item, $json, $itemIndex, knowledgeSource, processingConfig, userSettings) => {
     return {
       id: $json.id,
-      email: $json.email.toLowerCase(),
-      welcomeMessage: `Hello ${$json.name || 'User'}!`,
-      processedAt: $now()
+      title: $json.title,
+      // Defensive access to node data with fallbacks
+      sourceId: knowledgeSource?.knowledgeSourceId || null,
+      sourceName: knowledgeSource?.Name || 'Unknown Source',
+      maxLength: processingConfig?.maxTextLength || 4000,
+      userNotifications: userSettings?.enableNotifications || false,
+      processedAt: new Date().toISOString()
     };
   },
-  [], // No additional nodes
+  ['Knowledge Source', 'Processing Config', 'User Settings'], // Multiple node sources
   {
     logErrors: true
   }
 );
 
-// Log filter statistics
-console.log(`Filtered ${result.filterStats.filteredCount} from ${result.filterStats.totalItems} items`);
-console.log(`Filter rate: ${(result.filterStats.filterRate * 100).toFixed(1)}%`);
-
+console.log(`Processed ${result.stats.successful}/${result.stats.total} items`);
 return result.results;
 ```
 
@@ -202,7 +202,7 @@ const result = await processItems(
       id: $json.id,
       email: $json.email.toLowerCase(),
       validated: true,
-      validatedAt: $now()
+      validatedAt: new Date().toISOString()
     };
   },
   [],
@@ -272,17 +272,79 @@ Failed items include structured error information:
 }
 ```
 
+## Key Features
+
+### Automatic Context Injection
+- Every processor function receives `$item`, `$json`, and `$itemIndex` automatically
+- No need to manually extract these from the item parameter
+- Consistent interface across all processing functions
+
+### Defensive Node Data Access
+- Automatic retry logic for node data access with exponential backoff
+- Handles n8n race conditions when accessing upstream node data
+- Validation of node data before passing to processor functions
+- Graceful fallback when node data is unavailable
+
+### Smart Parameter Naming
+- Node names with spaces/special characters converted to camelCase parameters
+- `'Ingestion Sources'` becomes `ingestionSources` parameter
+- `'API_Config'` becomes `apiConfig` parameter
+- Predictable parameter naming for easy function signatures
+
 ## Best Practices
 
 1. **Always use the factory pattern** with `processItemsWithN8N($)`
-2. **Leverage context injection** - use `$item`, `$json`, `$itemIndex` parameters
-3. **Extract node data** when you need data from other nodes for processing
-4. **Use parallel processing** for I/O-heavy operations with appropriate concurrency
-5. **Enable error logging** during development
+2. **Leverage automatic context injection** - processor functions receive `$item`, `$json`, `$itemIndex` automatically
+3. **Use defensive access for node data** - the framework handles retries and validation
+4. **Use descriptive node names** - they become readable parameter names
+5. **Enable error logging** during development to see retry attempts and failures
 6. **Don't stop on errors** unless critical - let failed items flow through with `$error`
-7. **Monitor statistics** to track processing health
-8. **Use batch processing** for large datasets to manage memory
+7. **Monitor statistics** to track processing health and node data access issues
+8. **Handle null node data gracefully** - use optional chaining and fallbacks
 
-## Legacy Function (Deprecated)
+## Defensive Node Access Features
 
-The module also exports `processItemsWithPairing` for backward compatibility, but it's deprecated. Use `processItemsWithN8N($).processItems` instead for better functionality and n8n integration. 
+### Automatic Retry Logic
+- 3 retry attempts with exponential backoff (50ms, 100ms, 200ms)
+- Handles temporary n8n state inconsistencies during workflow execution
+- Automatic validation of retrieved node data
+
+### Smart Data Validation
+- Validates that node data contains expected structure
+- Special validation for source nodes requiring `knowledgeSourceId`
+- Logs validation failures and retry attempts when `logErrors: true`
+
+### Multiple Access Methods
+- Tries `itemMatching(itemIndex)` first for proper item pairing
+- Falls back to `item` for current item access
+- Uses `all()[index]` as final fallback with index bounds checking
+- Handles missing nodes gracefully
+
+### Example: Node Data Access Patterns
+
+```javascript
+// The framework automatically handles these access patterns:
+// 1. nodeRef.itemMatching(itemIndex)?.json
+// 2. nodeRef.item?.json  
+// 3. nodeRef.all()[safeIndex]?.json
+// 4. Retry with exponential backoff on failures
+// 5. Validation of retrieved data
+
+const result = await processItems(
+  inputItems,
+  ($item, $json, $itemIndex, sourceNode, configNode) => {
+    // sourceNode and configNode are already validated and retried
+    // Use defensive access for optional properties
+    return {
+      sourceId: sourceNode?.knowledgeSourceId || 'unknown',
+      maxLength: configNode?.textLimit || 4000,
+      hasValidSource: !!sourceNode
+    };
+  },
+  ['Source Node', 'Config Node']
+);
+```
+
+## Legacy Function (Removed)
+
+**Note**: The legacy `processItemsWithPairing` function has been completely removed from the codebase. All batch processing should now use `processItemsWithN8N($).processItems` for automatic context injection, defensive node access, and better n8n integration. 

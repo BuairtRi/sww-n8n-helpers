@@ -72,20 +72,15 @@ function validateAndExtractUrl(value, allowedProtocols = ['http', 'https']) {
 
 /**
  * Create error object for failed processing
+ * @deprecated Use createValidationError from './error' instead
  * @param {string} type - Error type
  * @param {string} message - Error message
  * @param {Object} context - Additional context
  * @returns {Object} Standardized error object
  */
 function createProcessingError(type, message, context = {}) {
-  return {
-    _error: {
-      type,
-      message,
-      timestamp: new Date().toISOString(),
-      ...context
-    }
-  };
+  const { createValidationError } = require('./error');
+  return createValidationError(type, message, context);
 }
 
 /**
@@ -130,33 +125,43 @@ function validatePhone(phone, locale = 'any') {
 }
 
 /**
- * Validate date string and return ISO format
+ * Validate date string and return ISO format using moment.js for better parsing
  * @param {string|Date} date - Date to validate
  * @param {Object} options - Validation options
  * @param {boolean} options.strict - Strict date validation
+ * @param {string|Array} options.format - Expected date format(s) for moment parsing
  * @returns {string|null} ISO date string or null if invalid
  */
 function validateAndFormatDate(date, options = {}) {
   if (!date) return null;
   
-  const { strict = false } = options;
+  const { strict = false, format } = options;
+  const moment = require('moment');
   
   try {
-    const dateObj = new Date(date);
+    let momentDate;
     
-    if (isNaN(dateObj.getTime())) {
+    if (format) {
+      // Parse with specific format(s)
+      momentDate = moment(date, format, strict);
+    } else {
+      // Parse with default moment parsing
+      momentDate = moment(date);
+    }
+    
+    if (!momentDate.isValid()) {
       return null;
     }
     
     if (strict) {
       // Additional validation for realistic dates
-      const year = dateObj.getFullYear();
+      const year = momentDate.year();
       if (year < 1900 || year > 2100) {
         return null;
       }
     }
     
-    return dateObj.toISOString();
+    return momentDate.toISOString();
   } catch (e) {
     return null;
   }

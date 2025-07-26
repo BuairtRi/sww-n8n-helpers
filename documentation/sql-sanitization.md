@@ -1,27 +1,90 @@
 # SQL Sanitization Module
 
-Comprehensive SQL injection prevention utilities optimized for Microsoft SQL Server (T-SQL) with field-specific sanitization strategies.
+**🔒 SECURITY CRITICAL: This module relies on `tsqlstring` for robust SQL injection prevention**
 
-## Installation and Import
+Comprehensive SQL injection prevention utilities optimized for Microsoft SQL Server (T-SQL) with field-specific sanitization strategies. All sanitization functions use the `tsqlstring` library as the core escaping mechanism to ensure proper T-SQL/SQL Server compatibility and security.
+
+## Installation and Dependencies
+
+**🔧 REQUIRED DEPENDENCY**: This module requires `tsqlstring` to be available in your n8n environment.
+
+```bash
+# In n8n environment, tsqlstring must be installed:
+docker exec -it n8n npm install tsqlstring
+```
+
+**Import Options:**
 
 ```javascript
 // Individual function imports (recommended for smaller projects)
-const { sanitizeForSQL, sanitizeByFieldType, generateInsertStatement, generateEnhancedSQLValue } = require('sww-n8n-helpers');
+const { sanitizeForSQL, sanitizeByFieldType, generateInsertStatement, escapeSqlValue } = require('sww-n8n-helpers');
 
 // Module-based imports (recommended for larger projects)
 const { modules } = require('sww-n8n-helpers');
-const { sanitizeForSQL, sanitizeByFieldType, generateInsertStatement, generateEnhancedSQLValue } = modules.sqlSanitization;
+const { sanitizeForSQL, sanitizeByFieldType, generateInsertStatement, escapeSqlValue } = modules.sqlSanitization;
 
 // Import entire module
 const utils = require('sww-n8n-helpers');
-const { sanitizeForSQL, generateEnhancedSQLValue } = utils.modules.sqlSanitization;
+const { sanitizeForSQL, escapeSqlValue } = utils.modules.sqlSanitization;
 ```
+
+**🛡️ Security Note**: All sanitization functions use `tsqlstring` internally. This library provides T-SQL/SQL Server specific escaping that is more robust than generic SQL escaping libraries.
+
+## Why tsqlstring is Critical
+
+### T-SQL/SQL Server Specific Escaping
+The `tsqlstring` library provides escaping specifically designed for Microsoft SQL Server and T-SQL:
+
+- **Proper Quote Escaping**: Handles single quotes correctly for T-SQL (`'` becomes `''`)
+- **Identifier Escaping**: Uses SQL Server bracket notation `[table_name]` for identifiers
+- **Type-Aware Escaping**: Correctly handles strings, numbers, dates, and NULL values
+- **Unicode Support**: Proper handling of Unicode characters in T-SQL context
+- **Injection Prevention**: Comprehensive protection against SQL injection attacks
+
+### What tsqlstring Handles Automatically
+
+```javascript
+const SqlString = require('tsqlstring');
+
+// String escaping with quote doubling
+SqlString.escape("O'Reilly's Book");
+// Returns: "'O''Reilly''s Book'"
+
+// Identifier escaping with brackets  
+SqlString.escapeId('user-table');
+// Returns: "[user-table]"
+
+// Type-aware value handling
+SqlString.escape(null);        // Returns: "NULL"
+SqlString.escape(123);         // Returns: "123" (no quotes)
+SqlString.escape(true);        // Returns: "1" (SQL Server bit format)
+SqlString.escape(new Date());  // Returns: "'2024-01-15T10:30:00.000Z'"
+
+// Placeholder substitution
+SqlString.format('SELECT * FROM ?? WHERE id = ?', ['users', 123]);
+// Returns: "SELECT * FROM [users] WHERE id = 123"
+```
+
+### Alternative Libraries and Why We Don't Use Them
+
+- **mysql**: Designed for MySQL, not T-SQL compatible
+- **pg-escape**: PostgreSQL specific, incompatible with SQL Server
+- **sql-string**: Generic library lacking T-SQL specific features
+- **Manual escaping**: Error-prone and incomplete protection
+
+**⚠️ SECURITY WARNING**: Using generic SQL escaping libraries or manual escaping with SQL Server can leave you vulnerable to injection attacks due to T-SQL specific syntax differences.
 
 ## Key Functions
 
-### `sanitizeForSQL(text, options)`
+### `sanitizeForSQL(text, options)` ⭐ CORE FUNCTION
 
-Core sanitization function that uses `tsqlstring` for robust SQL injection prevention.
+**Primary sanitization function that relies on `tsqlstring` for T-SQL-specific escaping and SQL injection prevention.**
+
+This function is the foundation of all SQL sanitization in this module. It leverages `tsqlstring.escape()` internally to provide:
+- Proper T-SQL/SQL Server string escaping
+- Automatic handling of special characters, quotes, and null bytes
+- Type-aware value conversion (strings, numbers, dates, booleans)
+- Robust protection against SQL injection attacks
 
 **Parameters:**
 
@@ -33,23 +96,29 @@ Core sanitization function that uses `tsqlstring` for robust SQL injection preve
   - `strictMode` (Boolean): Enable strict sanitization (default: false)
   - `useTsqlstring` (Boolean): Use tsqlstring for escaping (default: true)
 
-**Example: Basic SQL Sanitization**
+**Example: Basic SQL Sanitization with tsqlstring**
 
 ```javascript
 const { sanitizeForSQL } = require('sww-n8n-helpers');
 
+// tsqlstring handles proper T-SQL escaping automatically
 const userInput = "O'Reilly's \"Book\" & Co.";
 const maliciousInput = "'; DROP TABLE users; --";
 
+// Uses tsqlstring.escape() internally for safe escaping
 const safe1 = sanitizeForSQL(userInput);
-// Returns: "O''Reilly''s \"Book\" & Co." (quotes escaped)
+// Returns: "O''Reilly''s \"Book\" & Co." (T-SQL compatible escaping)
 
-const safe2 = sanitizeForSQL(maliciousInput, { strictMode: true });
-// Returns: "'';  users;  " (dangerous patterns removed)
+// Advanced sanitization with additional safety features
+const safe2 = sanitizeForSQL(maliciousInput);
+// Returns: "''; DROP TABLE users; --" (properly escaped, SQL injection prevented)
 
+// Length control with safe truncation
 const truncated = sanitizeForSQL("Very long text...", { maxLength: 20 });
-// Returns: "Very long text..." (truncated to 20 chars with ellipsis)
+// Returns: "Very long text..." (truncated then escaped with tsqlstring)
 ```
+
+**⚠️ CRITICAL DEPENDENCY**: All functions in this module depend on the `tsqlstring` package for proper SQL Server escaping. This is not optional - it's essential for security.
 
 ### `sanitizeByFieldType(text, fieldType, maxLength)`
 
@@ -141,7 +210,9 @@ const results = sanitizeItemsBatch(items, {
 
 #### `generateInsertStatement(tableName, data, options)`
 
-Generate safe INSERT statements with proper escaping and advanced features.
+**Generate safe INSERT statements with `tsqlstring`-powered escaping and advanced T-SQL features.**
+
+This function uses `tsqlstring.format()` with placeholder substitution to ensure all values are properly escaped for SQL Server.
 
 **Parameters:**
 
@@ -152,14 +223,16 @@ Generate safe INSERT statements with proper escaping and advanced features.
   - `specialValues` (Object): Raw SQL values like `{ id: 'NEWID()' }`
   - `fieldMappings` (Object): Field type mappings for enhanced sanitization
 
-**Example: Basic INSERT Statement**
+**Example: Basic INSERT Statement with tsqlstring**
 
 ```javascript
 const { generateInsertStatement } = require('sww-n8n-helpers');
 
+// Uses tsqlstring.format() for safe placeholder substitution
 const data = { Title: "O'Reilly Book", Price: 29.99 };
 const insertSQL = generateInsertStatement('Books', data);
 // Returns: "INSERT INTO [Books] ([Title], [Price]) VALUES ('O''Reilly Book', 29.99)"
+// All values escaped with tsqlstring for T-SQL compatibility
 ```
 
 **Example: Enhanced INSERT with OUTPUT Clause**
@@ -321,26 +394,96 @@ const updateSQL = generateUpdateStatement('Books', updateData, whereClause);
 // Returns: "UPDATE [Books] SET [Title] = 'Updated Book', [Price] = 34.99 WHERE [ID] = 123"
 ```
 
-### Raw SQL Utilities
+### Raw SQL Utilities (Powered by tsqlstring)
 
 #### `formatSqlQuery(sql, values)` and `escapeSqlValue(value, options)`
 
-For dynamic query construction.
+**Direct access to `tsqlstring` functionality for advanced query construction.**
 
-**Example: Dynamic Query Building**
+These functions provide direct access to the underlying `tsqlstring` library capabilities.
+
+**Example: Dynamic Query Building with tsqlstring**
 
 ```javascript
 const { formatSqlQuery, escapeSqlIdentifier } = require('sww-n8n-helpers');
 
+// Uses tsqlstring.format() internally for safe placeholder substitution
 const sql = 'SELECT * FROM ?? WHERE status = ? AND category = ?';
 const values = ['Products', 'active', 'tech'];
 
 const query = formatSqlQuery(sql, values);
 // Returns: "SELECT * FROM [Products] WHERE status = 'active' AND category = 'tech'"
+// All values processed through tsqlstring for T-SQL safety
 
+// Uses tsqlstring.escapeId() for identifier escaping
 const safeTable = escapeSqlIdentifier('user-table');
-// Returns: "[user-table]" (brackets for SQL Server)
+// Returns: "[user-table]" (SQL Server bracket notation)
 ```
+
+### Direct tsqlstring Access Functions
+
+The module also provides direct access to core `tsqlstring` functions:
+
+#### `escapeSqlValue(value, options)`
+**Direct wrapper around `tsqlstring.escape()`**
+
+```javascript
+const { escapeSqlValue } = require('sww-n8n-helpers');
+
+// String values
+const escaped = escapeSqlValue("O'Reilly Book");
+// Returns: "'O''Reilly Book'" (with quotes)
+
+// Remove quotes if needed
+const noQuotes = escapeSqlValue("O'Reilly Book", { includeQuotes: false });
+// Returns: "O''Reilly Book" (escaped but no outer quotes)
+
+// Boolean conversion for SQL Server
+const bitValue = escapeSqlValue(true);
+// Returns: "1" (SQL Server bit format)
+```
+
+#### `escapeSqlIdentifier(identifier, allowDots)`
+**Direct wrapper around `tsqlstring.escapeId()`**
+
+```javascript
+const { escapeSqlIdentifier } = require('sww-n8n-helpers');
+
+// Table/column names
+const tableName = escapeSqlIdentifier('user-data');
+// Returns: "[user-data]"
+
+// Qualified identifiers
+const qualified = escapeSqlIdentifier('dbo.user-table', true);
+// Returns: "[dbo].[user-table]"
+```
+
+#### `formatSqlQuery(sql, values)` 
+**Direct wrapper around `tsqlstring.format()`**
+
+```javascript
+const { formatSqlQuery } = require('sww-n8n-helpers');
+
+// Placeholder substitution
+const query = formatSqlQuery(
+  'INSERT INTO ?? (name, email) VALUES (?, ?)',
+  ['users', "John O'Connor", 'john@example.com']
+);
+// Returns: "INSERT INTO [users] (name, email) VALUES ('John O''Connor', 'john@example.com')"
+```
+
+#### `createRawSql(sql)`
+**Create raw SQL that bypasses escaping (use with extreme caution)**
+
+```javascript
+const { createRawSql } = require('sww-n8n-helpers');
+
+// For SQL functions that shouldn't be escaped
+const rawSql = createRawSql('NEWID()');
+// This can be passed to other functions and won't be escaped
+```
+
+**⚠️ WARNING**: `createRawSql()` bypasses all escaping. Only use for trusted SQL functions like `NEWID()`, `GETDATE()`, etc.
 
 ## Integration with Microsoft SQL Node
 

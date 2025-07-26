@@ -53,16 +53,33 @@ NODE_FUNCTION_ALLOW_EXTERNAL: "*"
 - **Key Functions:** `validator.isURL()`, `validator.isEmail()`, `validator.toBoolean()`
 - **Example:** `validator.isURL(String(url))`
 
-#### **tsqlstring**
-- **Usage:** `const tsqlstring = require('tsqlstring');`
-- **Purpose:** SQL string sanitization and escaping for T-SQL/SQL Server
-- **Key Functions:** `tsqlstring.escape()`, `tsqlstring.escapeId()`
-- **Security Use:** Prevents SQL injection by properly escaping SQL strings
+#### **tsqlstring** 🔒 **SECURITY CRITICAL**
+- **Usage:** `const SqlString = require('tsqlstring');`
+- **Purpose:** **T-SQL/SQL Server specific string sanitization and escaping**
+- **Key Functions:** `SqlString.escape()`, `SqlString.escapeId()`, `SqlString.format()`
+- **Security Use:** **PREVENTS SQL INJECTION** by properly escaping SQL strings for SQL Server
+- **Critical Role:** **Required dependency for all sww-n8n-helpers SQL functions**
+- **T-SQL Specific:** Designed specifically for Microsoft SQL Server, not generic SQL
 - **Example:** 
   ```javascript
-  const safeName = tsqlstring.escape(userInput);
-  const safeQuery = `SELECT * FROM Users WHERE Name = ${safeName}`;
+  const SqlString = require('tsqlstring');
+  
+  // String escaping with proper T-SQL quote doubling
+  const safeName = SqlString.escape("O'Reilly");
+  // Returns: "'O''Reilly'" (T-SQL compatible)
+  
+  // Identifier escaping with SQL Server brackets
+  const safeTable = SqlString.escapeId('user-table');
+  // Returns: "[user-table]"
+  
+  // Safe query building with placeholders
+  const query = SqlString.format(
+    'SELECT * FROM ?? WHERE name = ? AND active = ?',
+    ['Users', "O'Connor", true]
+  );
+  // Returns: "SELECT * FROM [Users] WHERE name = 'O''Connor' AND active = 1"
   ```
+- **⚠️ SECURITY WARNING:** Do NOT use mysql, pg-escape, or generic SQL libraries with SQL Server - they are not T-SQL compatible and can leave you vulnerable to injection attacks.
 
 ### File Handling
 
@@ -101,7 +118,15 @@ const tsqlstring = require('tsqlstring');
 ```
 
 ### In sww-n8n-helpers Functions  
-Our custom helper functions can also leverage these packages internally. For example, our SQL helper functions might use `tsqlstring` for sanitization, or our text processing functions might use `cheerio` for HTML cleaning.
+Our custom helper functions leverage these packages internally for robust functionality:
+
+- **SQL Sanitization Module**: **Depends entirely on `tsqlstring`** for all SQL escaping and injection prevention
+- **Text Processing Functions**: Use `cheerio` for HTML cleaning and parsing
+- **Batch Processing**: Leverages `lodash` for data manipulation and error handling
+- **Duration Utilities**: Use `parse-duration` with custom fallbacks for time parsing
+- **File Utilities**: Use `sanitize-filename` for cross-platform safe filename generation
+
+**🔒 CRITICAL DEPENDENCY**: The SQL sanitization module cannot function without `tsqlstring` - it's not optional.
 
 ## Usage Patterns
 

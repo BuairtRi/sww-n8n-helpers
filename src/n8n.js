@@ -2,6 +2,8 @@
 // N8N-specific utility functions for workflow nodes
 // These functions accept the N8N $ function as a parameter since it's only available in Code node context
 
+const { createNodeAccessError, logError } = require('./error');
+
 /**
  * Extract data from N8N nodes with error handling
  * @param {Function} $fn - N8N's $ function (pass $ from Code node context)
@@ -22,7 +24,8 @@ function extractNodeData($fn, nodeNames, currentItem = null, itemIndex = 0) {
                 // ✅ Use correct N8N API with cleaner optional chaining syntax
                 extracted[nodeName] = nodeData?.itemMatching(itemIndex)?.json || nodeData?.item?.json || null;
             } catch (error) {
-                console.warn(`Failed to extract data from node '${nodeName}' at index ${itemIndex}:`, error.message);
+                const nodeError = createNodeAccessError(nodeName, itemIndex, error, 0, 'itemMatching');
+                logError(nodeError);
                 extracted[nodeName] = null;
             }
         });
@@ -34,7 +37,8 @@ function extractNodeData($fn, nodeNames, currentItem = null, itemIndex = 0) {
                 // ✅ Use correct N8N API with cleaner optional chaining syntax
                 extracted[key] = nodeData?.itemMatching(itemIndex)?.json || nodeData?.item?.json || null;
             } catch (error) {
-                console.warn(`Failed to extract data from node '${nodeName}' (alias: ${key}) at index ${itemIndex}:`, error.message);
+                const nodeError = createNodeAccessError(nodeName, itemIndex, error, 0, 'itemMatching');
+                logError(nodeError, { prefix: `Alias '${key}': ` });
                 extracted[key] = null;
             }
         });
@@ -45,7 +49,8 @@ function extractNodeData($fn, nodeNames, currentItem = null, itemIndex = 0) {
             // ✅ Use correct N8N API with cleaner optional chaining syntax
             extracted[nodeNames] = nodeData?.itemMatching(itemIndex)?.json || nodeData?.item?.json || null;
         } catch (error) {
-            console.warn(`Failed to extract data from node '${nodeNames}' at index ${itemIndex}:`, error.message);
+            const nodeError = createNodeAccessError(nodeNames, itemIndex, error, 0, 'itemMatching');
+            logError(nodeError);
             extracted[nodeNames] = null;
         }
     }
@@ -82,7 +87,8 @@ function extractAllNodeData($fn, nodeNames, options = {}) {
                     };
                 }
             } catch (error) {
-                console.warn(`Failed to extract all data from node '${nodeName}':`, error.message);
+                const nodeError = createNodeAccessError(nodeName, 0, error, 0, 'all');
+                logError(nodeError);
                 extracted[nodeName] = [];
 
                 if (includeMetadata) {
@@ -107,7 +113,8 @@ function extractAllNodeData($fn, nodeNames, options = {}) {
                     };
                 }
             } catch (error) {
-                console.warn(`Failed to extract all data from node '${nodeName}' (alias: ${key}):`, error.message);
+                const nodeError = createNodeAccessError(nodeName, 0, error, 0, 'all');
+                logError(nodeError, { prefix: `Alias '${key}': ` });
                 extracted[key] = [];
 
                 if (includeMetadata) {
@@ -131,7 +138,8 @@ function extractAllNodeData($fn, nodeNames, options = {}) {
                 };
             }
         } catch (error) {
-            console.warn(`Failed to extract all data from node '${nodeNames}':`, error.message);
+            const nodeError = createNodeAccessError(nodeNames, 0, error, 0, 'all');
+            logError(nodeError);
             extracted[nodeNames] = [];
 
             if (includeMetadata) {
@@ -178,7 +186,8 @@ function getNodeValue($fn, nodeName, path = 'json', fallback = null, itemIndex =
 
         return current !== undefined ? current : fallback;
     } catch (error) {
-        console.warn(`Failed to get value from node '${nodeName}' at path '${path}' (itemIndex: ${itemIndex}):`, error.message);
+        const nodeError = createNodeAccessError(nodeName, itemIndex, error, 0, `getNodeValue(${path})`);
+        logError(nodeError);
         return fallback;
     }
 }

@@ -3,30 +3,10 @@
 // Runs after podcast episode normalization - includes integrated sanitization
 
 const { 
-  processItemsWithN8N
+  processItemsWithN8N,
+  generateInsertStatement,
+  createRawSql
 } = require('sww-n8n-helpers');
-
-// Import tsqlstring directly for SQL value escaping
-let tsqlstring;
-try {
-  tsqlstring = require('tsqlstring');
-  console.log('✅ tsqlstring loaded successfully');
-} catch (error) {
-  console.error('❌ tsqlstring not available:', error.message);
-  // Fallback: simple manual escaping
-  tsqlstring = {
-    escape: (value) => {
-      if (value === null || value === undefined) return 'NULL';
-      if (typeof value === 'string') {
-        return "'" + value.replace(/'/g, "''") + "'";
-      }
-      if (typeof value === 'number') {
-        return String(value);
-      }
-      return "'" + String(value) + "'";
-    }
-  };
-}
 
 // DEBUG: Test direct node access before using batch utility
 const firstData = $input.all()[0];
@@ -102,63 +82,39 @@ const result = processItems(
       throw new Error(`Missing episodeGuid from Podcast Episodes for item ${$itemIndex}. This is required for episode identification.`);
     }
 
-    // Prepare values for SQL insertion (tsqlstring.escape handles SQL injection protection)
-    const sqlValues = {
-      knowledgeSourceId: tsqlstring.escape(sourceId),
-      title: tsqlstring.escape(podcastEpisodes.title?.substring(0, 250) || null),
-      publicationDate: tsqlstring.escape(podcastEpisodes.publicationDate),
-      audioUrl: tsqlstring.escape(podcastEpisodes.audioUrl?.substring(0, 2000) || null),
-      episodeGuid: tsqlstring.escape(podcastEpisodes.episodeGuid?.substring(0, 500) || null),
-      description: tsqlstring.escape(podcastEpisodes.description || null),
-      summary: tsqlstring.escape(podcastEpisodes.summary || null),
-      episodeLink: tsqlstring.escape(podcastEpisodes.episodeLink?.substring(0, 4000) || null),
-      duration: podcastEpisodes.duration || 'NULL',
-      durationFriendly: tsqlstring.escape(podcastEpisodes.durationFriendly?.substring(0, 50) || null),
-      audioFileSize: podcastEpisodes.audioFileSize || 'NULL',
-      audioFileSizeFriendly: tsqlstring.escape(podcastEpisodes.audioFileSizeFriendly?.substring(0, 50) || null),
-      fileExtension: tsqlstring.escape(podcastEpisodes.fileExtension?.substring(0, 10) || null),
-      audioFileType: tsqlstring.escape(podcastEpisodes.audioFileType?.substring(0, 100) || null),
-      fileName: tsqlstring.escape(podcastEpisodes.fileName?.substring(0, 255) || null),
-      episodeImage: tsqlstring.escape(podcastEpisodes.episodeImage?.substring(0, 4000) || null),
-      author: tsqlstring.escape(podcastEpisodes.author?.substring(0, 500) || null)
+    // Prepare data for SQL insertion using the simplified utilities
+    const episodeData = {
+      KnowledgeSourceInstanceId: createRawSql('NEWID()'),
+      KnowledgeSourceId: sourceId,
+      Name: podcastEpisodes.title?.substring(0, 250) || null,
+      SourceDate: podcastEpisodes.publicationDate,
+      SourceUrl: podcastEpisodes.audioUrl?.substring(0, 2000) || null,
+      SourceId: podcastEpisodes.episodeGuid?.substring(0, 500) || null,
+      SourceDescription: podcastEpisodes.description || null,
+      SourceSummary: podcastEpisodes.summary || null,
+      SourceLink: podcastEpisodes.episodeLink?.substring(0, 4000) || null,
+      Duration: podcastEpisodes.duration || null,
+      FriendlyDuration: podcastEpisodes.durationFriendly?.substring(0, 50) || null,
+      Length: podcastEpisodes.audioFileSize || null,
+      FriendlyLength: podcastEpisodes.audioFileSizeFriendly?.substring(0, 50) || null,
+      SourceFileExtension: podcastEpisodes.fileExtension?.substring(0, 10) || null,
+      SourceMimeType: podcastEpisodes.audioFileType?.substring(0, 100) || null,
+      SourceFileName: podcastEpisodes.fileName?.substring(0, 255) || null,
+      SourceImageUrl: podcastEpisodes.episodeImage?.substring(0, 4000) || null,
+      Author: podcastEpisodes.author?.substring(0, 500) || null
     };
     
     console.log(`Debug values for item ${$itemIndex}:`, {
       originalTitle: podcastEpisodes.title,
-      sqlTitle: sqlValues.title,
       originalGuid: podcastEpisodes.episodeGuid,
-      sqlGuid: sqlValues.episodeGuid,
       duration: podcastEpisodes.duration,
       fileSize: podcastEpisodes.audioFileSize
     });
 
-    // Build the insertion SQL query
-    const query = `
-INSERT INTO KnowledgeSourceInstances
-(KnowledgeSourceInstanceId, KnowledgeSourceId, Name, SourceDate, SourceUrl, SourceId, SourceDescription, SourceSummary, SourceLink, Duration, FriendlyDuration, Length, FriendlyLength, SourceFileExtension, SourceMimeType, SourceFileName, SourceImageUrl, Author)
-OUTPUT INSERTED.KnowledgeSourceInstanceId
-VALUES
-(
-  NEWID(), 
-  ${sqlValues.knowledgeSourceId}, 
-  ${sqlValues.title}, 
-  ${sqlValues.publicationDate}, 
-  ${sqlValues.audioUrl}, 
-  ${sqlValues.episodeGuid}, 
-  ${sqlValues.description}, 
-  ${sqlValues.summary}, 
-  ${sqlValues.episodeLink}, 
-  ${sqlValues.duration}, 
-  ${sqlValues.durationFriendly},
-  ${sqlValues.audioFileSize},
-  ${sqlValues.audioFileSizeFriendly},
-  ${sqlValues.fileExtension},
-  ${sqlValues.audioFileType},
-  ${sqlValues.fileName},
-  ${sqlValues.episodeImage},
-  ${sqlValues.author}
-)
-`;
+    // Generate SQL using the utility function
+    const query = generateInsertStatement('KnowledgeSourceInstances', episodeData, {
+      outputClause: 'OUTPUT INSERTED.KnowledgeSourceInstanceId'
+    });
 
     return {
       query: query,
@@ -173,13 +129,13 @@ VALUES
           duration: podcastEpisodes.duration,
           audioFileSize: podcastEpisodes.audioFileSize
         },
-        // SQL-ready values (for reference)
-        sqlReady: {
-          episodeTitle: sqlValues.title,
-          episodeGuid: sqlValues.episodeGuid,
-          audioUrl: sqlValues.audioUrl,
-          description: sqlValues.description,
-          summary: sqlValues.summary
+        // Processed data for reference
+        processed: {
+          episodeTitle: episodeData.Name,
+          episodeGuid: episodeData.SourceId,
+          audioUrl: episodeData.SourceUrl,
+          description: episodeData.SourceDescription,
+          summary: episodeData.SourceSummary
         }
       },
       metadata: {

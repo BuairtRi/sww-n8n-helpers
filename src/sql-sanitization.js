@@ -5,50 +5,43 @@
 
 const _ = require('lodash');
 const SqlString = require('tsqlstring'); // peer dependency
-const { createProcessingError } = require('./validation');
+const { createSQLSanitizationError } = require('./error');
 
 /**
- * Default field type configurations for sanitization
+ * Simple field length limits for common database fields
  */
-const DEFAULT_FIELD_MAPPINGS = {
-  // Topic fields
-  Topic: { type: 'title', maxLength: 250 },
-  PodcastPrompt: { type: 'content', maxLength: null },
-  DigestPrompt: { type: 'content', maxLength: null },
-  ResearchBriefPrompt: { type: 'content', maxLength: null },
-
-  // Knowledge Source fields
-  Name: { type: 'name', maxLength: 250 },
-  Url: { type: 'url', maxLength: 2000 },
-  SourceId: { type: 'default', maxLength: 500 },
-
-  // Knowledge Source Instance fields
-  Title: { type: 'title', maxLength: 250 },
-  Subtitle: { type: 'title', maxLength: 250 },
-  Author: { type: 'name', maxLength: 500 },
-  SourceSummary: { type: 'summary', maxLength: null },
-  SourceDescription: { type: 'description', maxLength: null },
-  SourceUrl: { type: 'url', maxLength: 2000 },
-  SourceLink: { type: 'url', maxLength: 4000 },
-  SourceImageUrl: { type: 'url', maxLength: 4000 },
-
-  // Text fields
-  Text: { type: 'content', maxLength: null },
-  Type: { type: 'name', maxLength: 50 },
-
-  // Common fields
-  subject: { type: 'title', maxLength: 250 },
-  title: { type: 'title', maxLength: 250 },
-  description: { type: 'description', maxLength: null },
-  content: { type: 'content', maxLength: null },
-  summary: { type: 'summary', maxLength: null },
-  email: { type: 'email', maxLength: 255 },
-  url: { type: 'url', maxLength: 2000 },
-  link: { type: 'url', maxLength: 2000 }
+const FIELD_LENGTH_LIMITS = {
+  // Common short fields
+  Title: 250,
+  Name: 250,
+  Subject: 250,
+  Type: 50,
+  Email: 255,
+  
+  // URL fields
+  Url: 2000,
+  SourceUrl: 2000,
+  SourceLink: 4000,
+  SourceImageUrl: 4000,
+  
+  // ID fields
+  SourceId: 500,
+  
+  // Author fields
+  Author: 500,
+  
+  // File-related fields
+  FileName: 255,
+  FileExtension: 10,
+  MimeType: 100,
+  
+  // Duration/size display fields
+  FriendlyDuration: 50,
+  FriendlyLength: 50
 };
 
 /**
- * Advanced SQL escaping using tsqlstring for complex scenarios
+ * Simple SQL value escaping using tsqlstring
  * @param {*} value - Value to escape for SQL
  * @param {Object} options - Escaping options
  * @param {boolean} options.includeQuotes - Include surrounding quotes
@@ -57,82 +50,37 @@ const DEFAULT_FIELD_MAPPINGS = {
 function escapeSqlValue(value, options = {}) {
   const { includeQuotes = true } = options;
 
-  // Handle null
-  if (value === null || value === undefined) {
-    return 'NULL';
-  }
-
-  // Handle numbers - never quote numbers in SQL contexts (they are literals)
-  if (typeof value === 'number') {
-    return String(value);
-  }
-
-  // Handle booleans (convert to 1/0 for SQL Server)
-  if (typeof value === 'boolean') {
-    return value ? '1' : '0';
-  }
-
-  // Handle arrays
-  if (Array.isArray(value)) {
-    const escapedValues = value.map(v => escapeSqlValue(v, { includeQuotes: true }));
-    return escapedValues.join(', ');
-  }
-
-  // Handle dates
-  if (value instanceof Date) {
-    const isoString = value.toISOString();
-    return includeQuotes ? `'${isoString}'` : isoString;
-  }
-
-  // Handle Buffer objects
-  if (Buffer.isBuffer(value)) {
-    const hexString = value.toString('hex').toLowerCase(); // Use lowercase to match test expectations
-    return `X'${hexString}'`;
-  }
-
-  // Handle objects with toSqlString method (raw SQL)
+  // Handle objects with toSqlString method (raw SQL) - keep this for NEWID(), etc.
   if (typeof value === 'object' && value !== null && typeof value.toSqlString === 'function') {
     return value.toSqlString();
   }
 
-  // Handle other objects - match tsqlstring behavior
-  if (typeof value === 'object' && value !== null) {
-    const keys = Object.keys(value);
-    if (keys.length > 0) {
-      // Return the format expected by the test: [user] = '[object Object]'
-      const firstKey = keys[0];
-      const escapedKey = SqlString.escapeId(firstKey);
-      return `${escapedKey} = '[object Object]'`;
-    }
-    // Fallback for empty objects
-    return includeQuotes ? "'[object Object]'" : '[object Object]';
+  // Handle booleans (convert to 1/0 for SQL Server compatibility)
+  if (typeof value === 'boolean') {
+    return value ? '1' : '0';
   }
 
-  // Use tsqlstring for robust escaping of strings
+  // For everything else, defer to tsqlstring which handles:
+  // - null/undefined -> NULL
+  // - numbers -> unquoted numbers
+  // - strings -> properly escaped and quoted
+  // - dates -> ISO strings
+  // - arrays -> comma-separated values
+  // - buffers -> hex strings
   const escaped = SqlString.escape(value);
-
+  
   return includeQuotes ? escaped : escaped.slice(1, -1);
 }
 
 /**
- * Core sanitization function for SQL-safe text using tsqlstring
+ * Simple SQL text sanitization using tsqlstring
  * @param {*} text - Text to sanitize
  * @param {Object} options - Sanitization options
  * @param {number} options.maxLength - Maximum length (null for unlimited)
- * @param {boolean} options.allowNewlines - Allow newline characters
- * @param {boolean} options.preserveBasicFormatting - Preserve basic formatting
- * @param {boolean} options.strictMode - Enable strict sanitization
- * @param {boolean} options.useTsqlstring - Use tsqlstring for escaping (default: true)
  * @returns {string|null} Sanitized text or null if empty
  */
 function sanitizeForSQL(text, options = {}) {
-  const {
-    maxLength = null,
-    allowNewlines = true,
-    preserveBasicFormatting = false,
-    strictMode = false,
-    useTsqlstring = true
-  } = options;
+  const { maxLength = null } = options;
 
   // Handle null/undefined
   if (text === null || text === undefined) {
@@ -141,11 +89,7 @@ function sanitizeForSQL(text, options = {}) {
 
   // Convert to string if needed
   if (typeof text !== 'string') {
-    if (typeof text === 'object' && text !== null) {
-      text = JSON.stringify(text);
-    } else {
-      text = String(text);
-    }
+    text = typeof text === 'object' ? JSON.stringify(text) : String(text);
   }
 
   // Trim whitespace
@@ -156,169 +100,43 @@ function sanitizeForSQL(text, options = {}) {
     return null;
   }
 
-  // Remove dangerous characters first (before escaping)
-  text = text.replace(/\0/g, ''); // Remove null bytes
-  text = text.replace(/\x1a/g, ''); // Remove substitute character
+  // Remove null bytes and substitute characters
+  text = text.replace(/\0/g, '').replace(/\x1a/g, '');
 
-  // In strict mode, be more aggressive with dangerous patterns
-  if (strictMode) {
-    const dangerousPatterns = [
-      /--\s*$/gm,  // SQL comments at end of lines
-      /\/\*.*?\*\//gs, // Block comments
-      /<script[^>]*>.*?<\/script>/gis, // Script tags
-      /<iframe[^>]*>.*?<\/iframe>/gis, // Iframe tags
-      /xp_cmdshell/gi, // Dangerous SQL Server procedures
-      /sp_oacreate/gi,
-      /sp_oamethod/gi,
-      /;\s*DROP\s+TABLE\s+\w+/gi, // DROP TABLE statements - more specific
-      /;\s*DELETE\s+FROM\s+\w+/gi, // DELETE statements - more specific  
-      /;\s*UPDATE\s+\w+/gi, // UPDATE statements - more specific
-      /;\s*INSERT\s+INTO\s+\w+/gi, // INSERT statements - more specific
-      /;\s*EXEC\s+\w+/gi, // EXEC statements - more specific
-      /;\s*EXECUTE\s+\w+/gi, // EXECUTE statements - more specific
-      /;\s*--.*$/gm // Remove SQL comments after semicolons
-    ];
-
-    dangerousPatterns.forEach(pattern => {
-      text = text.replace(pattern, '');
-    });
-
-    // Trim again after removing dangerous patterns
-    text = text.trim();
-
-    // If all content was removed by strict mode, return empty result
-    if (!text) {
-      return '';
-    }
+  // Apply length truncation before escaping
+  if (maxLength && maxLength > 0 && text.length > maxLength) {
+    text = text.substring(0, maxLength - 3) + '...';
   }
 
-  // Handle newlines based on preference
-  if (!allowNewlines) {
-    text = text.replace(/[\r\n]+/g, ' ');
-  } else if (preserveBasicFormatting) {
-    // When preserving formatting, use tsqlstring which will escape newlines as \\n
-    // This matches the test expectation
-    const escaped = SqlString.escape(text);
-    return escaped.slice(1, -1); // Remove outer quotes
-  } else {
-    // Normalize line endings
-    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  }
-
-  // Clean up extra whitespace (unless preserving formatting or keeping newlines)
-  if (!preserveBasicFormatting && !allowNewlines) {
-    text = text.replace(/\s+/g, ' ').trim();
-  } else if (!preserveBasicFormatting && allowNewlines) {
-    // When preserving newlines, only collapse spaces but keep newlines
-    text = text.replace(/[ \t]+/g, ' ').trim();
-  }
-
-  // Do escaping first, then apply length truncation
-  let escapedText;
-  if (useTsqlstring) {
-    // tsqlstring.escape() handles all the complex SQL injection scenarios
-    const escaped = SqlString.escape(text);
-    // Remove the outer quotes that tsqlstring adds since we may not always want them
-    escapedText = escaped.slice(1, -1);
-  } else {
-    // Fallback: Basic escaping
-    escapedText = text.replace(/'/g, "''");
-    escapedText = escapedText.replace(/\\/g, "\\\\");
-  }
-
-  // Apply length truncation after escaping
-  if (maxLength && maxLength > 0 && escapedText.length > maxLength) {
-    escapedText = escapedText.substring(0, maxLength - 3) + '...';
-  }
-
-  return escapedText;
+  // Use tsqlstring for escaping, then remove outer quotes
+  const escaped = SqlString.escape(text);
+  return escaped.slice(1, -1);
 }
 
 /**
- * Enhanced sanitization for different field types
+ * Simple field-based sanitization with length limits
  * @param {*} text - Text to sanitize
- * @param {string} fieldType - Type of field (title, content, url, etc.)
+ * @param {string} fieldName - Field name for length lookup
  * @param {number} maxLength - Maximum length override
  * @returns {string|null} Sanitized text
  */
-function sanitizeByFieldType(text, fieldType, maxLength = null) {
-  // Normalize maxLength - treat null, undefined, 0, or negative numbers as unlimited
-  const effectiveMaxLength = (maxLength === null || maxLength === undefined || maxLength <= 0) ? null : maxLength;
-  const baseOptions = { maxLength: effectiveMaxLength };
+function sanitizeByFieldType(text, fieldName, maxLength = null) {
+  if (!text) return null;
 
-  switch (fieldType.toLowerCase()) {
-    case 'title':
-    case 'name':
-    case 'subject':
-      return sanitizeForSQL(text, {
-        ...baseOptions,
-        maxLength: effectiveMaxLength || 250,
-        allowNewlines: false,
-        strictMode: true
-      });
+  // Determine max length from field name or override
+  const effectiveMaxLength = maxLength || FIELD_LENGTH_LIMITS[fieldName] || null;
 
-    case 'description':
-    case 'content':
-    case 'summary':
-      // For content fields, preserve actual newlines without escaping
-      return sanitizeForSQL(text, {
-        ...baseOptions,
-        maxLength: effectiveMaxLength,
-        allowNewlines: true,
-        preserveBasicFormatting: false, // Don't use preserveBasicFormatting to avoid escaping
-        strictMode: false,
-        useTsqlstring: false // Use basic escaping to preserve newlines
-      });
-
-    case 'url':
-    case 'link':
-      // URLs need special handling
-      if (!text) return null;
-      const cleanUrl = text.trim().replace(/['"\s]/g, '');
-      return sanitizeForSQL(cleanUrl, {
-        maxLength: effectiveMaxLength || 2000,
-        allowNewlines: false,
-        strictMode: true
-      });
-
-    case 'email':
-      if (!text) return null;
-      // First convert to lowercase, then clean
-      const cleanEmail = text.trim().toLowerCase().replace(/['";\s]/g, '');
-      return sanitizeForSQL(cleanEmail, {
-        maxLength: effectiveMaxLength || 255,
-        allowNewlines: false,
-        strictMode: true,
-        useTsqlstring: false // Don't use tsqlstring for emails as we want simple output
-      });
-
-    case 'json':
-      // For JSON strings, be extra careful
-      if (!text) return null;
-      try {
-        // Validate it's actually JSON
-        JSON.parse(text);
-        return sanitizeForSQL(text, {
-          ...baseOptions,
-          allowNewlines: true,
-          strictMode: false
-        });
-      } catch (e) {
-        console.warn('Invalid JSON provided for sanitization:', e.message);
-        return sanitizeForSQL(text, {
-          ...baseOptions,
-          allowNewlines: true,
-          strictMode: true
-        });
-      }
-
-    default:
-      return sanitizeForSQL(text, {
-        ...baseOptions,
-        allowNewlines: true,
-        strictMode: false
-      });
+  // Special handling for URLs - remove quotes and spaces
+  if (fieldName && (fieldName.toLowerCase().includes('url') || fieldName.toLowerCase().includes('link'))) {
+    text = String(text).trim().replace(/['"\s]/g, '');
   }
+
+  // Special handling for emails - lowercase and clean
+  if (fieldName && fieldName.toLowerCase().includes('email')) {
+    text = String(text).trim().toLowerCase().replace(/['";\s]/g, '');
+  }
+
+  return sanitizeForSQL(text, { maxLength: effectiveMaxLength });
 }
 
 /**
@@ -338,16 +156,15 @@ function parseFieldList(fieldListString) {
 }
 
 /**
- * Batch sanitization function for multiple fields with selective processing
+ * Simple object sanitization with optional field selection
  * @param {Object} obj - Object to sanitize
- * @param {Object} fieldMappings - Field type mappings
- * @param {Array|null} fieldsToProcess - Fields to process (null = all string fields)
+ * @param {Array|null} fieldsToProcess - Fields to process (null = all fields)
  * @param {Object} options - Processing options
  * @param {boolean} options.includeOriginal - Include original values in output
  * @param {string} options.sanitizedSuffix - Suffix for sanitized field names
  * @returns {Object} Sanitized object
  */
-function sanitizeObject(obj, fieldMappings = {}, fieldsToProcess = null, options = {}) {
+function sanitizeObject(obj, fieldsToProcess = null, options = {}) {
   const {
     includeOriginal = false,
     sanitizedSuffix = 'Sanitized'
@@ -355,33 +172,16 @@ function sanitizeObject(obj, fieldMappings = {}, fieldsToProcess = null, options
 
   const result = includeOriginal ? { ...obj } : {};
 
-  // Merge default field mappings with custom ones
-  const combinedMappings = { ...DEFAULT_FIELD_MAPPINGS, ...fieldMappings };
-
-  // If fieldsToProcess is null, process all string fields
-  // If it's an array, only process those fields
-  const shouldProcessField = (key) => {
-    if (fieldsToProcess === null) return true;
-    return fieldsToProcess.includes(key);
-  };
-
   for (const [key, value] of Object.entries(obj)) {
-    // Only process if it's in our field list and is a string-like value
-    if (shouldProcessField(key) && (value !== null && value !== undefined)) {
-      // For numbers, preserve the original type unless it's specifically a string field
+    const shouldProcess = fieldsToProcess === null || fieldsToProcess.includes(key);
+    
+    if (shouldProcess && value !== null && value !== undefined) {
       if (typeof value === 'number') {
         result[`${key}${sanitizedSuffix}`] = value;
       } else {
-        // Determine field type and max length from mappings
-        const fieldConfig = combinedMappings[key] || {};
-        const fieldType = fieldConfig.type || (key.toLowerCase().includes('email') ? 'email' : 'default');
-        const maxLength = fieldConfig.maxLength || null;
-
-        // Add sanitized version
-        result[`${key}${sanitizedSuffix}`] = sanitizeByFieldType(value, fieldType, maxLength);
+        result[`${key}${sanitizedSuffix}`] = sanitizeByFieldType(value, key);
       }
-    } else if (shouldProcessField(key)) {
-      // Field was in the list but is null/undefined
+    } else if (shouldProcess) {
       result[`${key}${sanitizedSuffix}`] = null;
     }
   }
@@ -418,7 +218,6 @@ function validateSanitizedText(original, sanitized, fieldName = 'text') {
  * Process multiple items with SQL sanitization using batch processing
  * @param {Array} items - Items to process
  * @param {Object} options - Processing options
- * @param {Object} options.fieldMappings - Field type mappings
  * @param {Array|null} options.fieldsToProcess - Fields to process
  * @param {boolean} options.includeValidation - Include validation results
  * @param {boolean} options.maintainPairing - Maintain n8n item pairing
@@ -426,7 +225,6 @@ function validateSanitizedText(original, sanitized, fieldName = 'text') {
  */
 function sanitizeItemsBatch(items, options = {}) {
   const {
-    fieldMappings = DEFAULT_FIELD_MAPPINGS,
     fieldsToProcess = null,
     includeValidation = true,
     maintainPairing = true,
@@ -463,13 +261,9 @@ function sanitizeItemsBatch(items, options = {}) {
       // Parse field list if provided
       const fieldsToSanitize = parseFieldList(item.fieldsToSanitize) || fieldsToProcess;
 
-      // Use custom field mappings if provided, merging with defaults
-      const effectiveFieldMappings = { ...DEFAULT_FIELD_MAPPINGS, ...fieldMappings };
-
       // Sanitize the object
       const sanitizedObject = sanitizeObject(
         objectToProcess,
-        effectiveFieldMappings,
         fieldsToSanitize,
         { includeOriginal: false }
       );
@@ -516,26 +310,7 @@ function sanitizeItemsBatch(items, options = {}) {
         console.error(`Sanitization failed for item ${i}:`, error.message);
       }
 
-      const errorResult = createProcessingError(
-        'sanitization_error',
-        error.message,
-        {
-          itemIndex: i,
-          originalData: {
-            keys: Object.keys(item || {}),
-            hasObjectToSanitize: item?.objectToSanitize !== undefined,
-            fieldsToSanitize: item?.fieldsToSanitize
-          }
-        }
-      );
-
-      if (includeValidation) {
-        errorResult.processingMetadata = {
-          sanitizedAt: new Date().toISOString(),
-          itemIndex: i,
-          failed: true
-        };
-      }
+      const errorResult = createSQLSanitizationError(error, i, item, includeValidation);
 
       if (maintainPairing) {
         outputItems.push({
@@ -597,13 +372,12 @@ function escapeSqlValuesBatch(values, options = {}) {
 }
 
 /**
- * Generate INSERT statement with proper escaping
+ * Generate INSERT statement using SqlString.format with placeholders
  * @param {string} tableName - Table name
  * @param {Object|Array} data - Data to insert (object or array of objects)
  * @param {Object} options - Generation options
  * @param {string} options.outputClause - OUTPUT clause to add (e.g., "OUTPUT INSERTED.*")
  * @param {Object} options.specialValues - Special SQL values like { id: 'NEWID()' }
- * @param {Object} options.fieldMappings - Field type mappings for enhanced sanitization
  * @returns {string} Generated INSERT statement
  */
 function generateInsertStatement(tableName, data, options = {}) {
@@ -611,171 +385,52 @@ function generateInsertStatement(tableName, data, options = {}) {
     throw new Error('Table name and data are required');
   }
 
-  const {
-    outputClause = null,
-    specialValues = {},
-    fieldMappings = {}
-  } = options;
-
-  const escapedTable = escapeSqlIdentifier(tableName);
+  const { outputClause = null, specialValues = {} } = options;
 
   if (Array.isArray(data)) {
-    // Bulk insert
-    if (data.length === 0) return '';
-
-    const firstRow = data[0];
-    const columns = Object.keys(firstRow);
-    const escapedColumns = columns.map(col => escapeSqlIdentifier(col));
-
-    const values = data.map(row => {
-      const rowValues = columns.map(col => {
-        // Check for special values first
-        if (specialValues[col]) {
-          return specialValues[col]; // Don't escape SQL functions
-        }
-
-        // Use field mapping if available for enhanced value generation
-        const fieldType = fieldMappings[col]?.type;
-        if (fieldType) {
-          return generateEnhancedSQLValue(row[col], fieldType, fieldMappings[col]);
-        }
-
-        // Fallback to standard escaping
-        return escapeSqlValue(row[col]);
-      });
-      return `(${rowValues.join(', ')})`;
-    }).join(', ');
-
-    let sql = `INSERT INTO ${escapedTable} (${escapedColumns.join(', ')})`;
-
-    if (outputClause) {
-      sql += `\n${outputClause}`;
-    }
-
-    sql += `\nVALUES ${values}`;
-
-    return sql;
-  } else {
-    // Single row insert
-    const columns = Object.keys(data);
-    const escapedColumns = columns.map(col => escapeSqlIdentifier(col));
-
-    const values = columns.map(col => {
-      // Check for special values first
-      if (specialValues[col]) {
-        return specialValues[col]; // Don't escape SQL functions
-      }
-
-      // Use field mapping if available for enhanced value generation
-      const fieldType = fieldMappings[col]?.type;
-      if (fieldType) {
-        return generateEnhancedSQLValue(data[col], fieldType, fieldMappings[col]);
-      }
-
-      // Fallback to standard escaping
-      return escapeSqlValue(data[col]);
-    });
-
-    let sql = `INSERT INTO ${escapedTable} (${escapedColumns.join(', ')})`;
-
-    if (outputClause) {
-      sql += `\n${outputClause}`;
-    }
-
-    sql += `\nVALUES (${values.join(', ')})`;
-
-    return sql;
+    // Bulk insert - for now, process as multiple single inserts
+    // This could be optimized later to use bulk insert syntax
+    return data.map(row => generateInsertStatement(tableName, row, options)).join(';\n');
   }
+
+  // Single row insert
+  const columns = Object.keys(data);
+  const values = [];
+  const placeholders = [];
+
+  columns.forEach(col => {
+    if (specialValues[col]) {
+      // Special values like NEWID() go directly in the SQL
+      placeholders.push(specialValues[col]);
+    } else {
+      // Regular values use placeholders
+      placeholders.push('?');
+      values.push(data[col]);
+    }
+  });
+
+  // Build the query with placeholders
+  let sql = `INSERT INTO ?? (??) `;
+  
+  if (outputClause) {
+    sql += `${outputClause} `;
+  }
+  
+  sql += `VALUES (${placeholders.join(', ')})`;
+
+  // Use SqlString.format to safely substitute values
+  return SqlString.format(sql, [tableName, columns, ...values]);
 }
 
-/**
- * Enhanced SQL value generator with comprehensive type handling
- * @param {*} value - Value to convert to SQL
- * @param {string} dataType - Data type for specialized handling
- * @param {Object} options - Additional options like maxLength
- * @returns {string} SQL-ready value
- */
-function generateEnhancedSQLValue(value, dataType = 'string', options = {}) {
-  if (value === null || value === undefined || value === '') {
-    return 'NULL';
-  }
-
-  const { maxLength = null } = options;
-
-  switch (dataType.toLowerCase()) {
-    case 'string':
-    case 'title':
-    case 'name':
-    case 'subject':
-      const sanitized = sanitizeByFieldType(String(value), dataType, maxLength);
-      return sanitized ? `'${sanitized}'` : 'NULL';
-
-    case 'number':
-    case 'int':
-    case 'integer':
-    case 'float':
-    case 'decimal':
-      return isNaN(value) ? 'NULL' : String(value);
-
-    case 'guid':
-    case 'uniqueidentifier':
-    case 'uuid':
-      const guidSanitized = sanitizeForSQL(String(value));
-      return guidSanitized ? `TRY_CONVERT(uniqueidentifier, '${guidSanitized}')` : 'NULL';
-
-    case 'date':
-    case 'datetime':
-    case 'datetime2':
-    case 'timestamp':
-      // Handle Date objects and ISO strings
-      if (value instanceof Date) {
-        return `'${value.toISOString()}'`;
-      }
-      return `'${value}'`;
-
-    case 'url':
-    case 'link':
-      const urlSanitized = sanitizeByFieldType(String(value), 'url', maxLength || 2000);
-      return urlSanitized ? `'${urlSanitized}'` : 'NULL';
-
-    case 'filename':
-      const filenameSanitized = sanitizeByFieldType(String(value), 'title', maxLength || 255);
-      return filenameSanitized ? `'${filenameSanitized}'` : 'NULL';
-
-    case 'content':
-    case 'text':
-    case 'description':
-    case 'summary':
-      const contentSanitized = sanitizeByFieldType(String(value), dataType, maxLength);
-      return contentSanitized ? `'${contentSanitized}'` : 'NULL';
-
-    case 'email':
-      const emailSanitized = sanitizeByFieldType(String(value), 'email', maxLength || 255);
-      return emailSanitized ? `'${emailSanitized}'` : 'NULL';
-
-    case 'json':
-      const jsonSanitized = sanitizeByFieldType(String(value), 'json', maxLength);
-      return jsonSanitized ? `'${jsonSanitized}'` : 'NULL';
-
-    case 'boolean':
-    case 'bit':
-      return value ? '1' : '0';
-
-    default:
-      // Fallback to existing escapeSqlValue behavior
-      return escapeSqlValue(value);
-  }
-}
 
 /**
  * Generate UPDATE statement with proper escaping
  * @param {string} tableName - Table name
  * @param {Object} data - Data to update
  * @param {Object} whereClause - WHERE clause conditions
- * @param {Object} options - Generation options
  * @returns {string} Generated UPDATE statement
  */
-function generateUpdateStatement(tableName, data, whereClause, options = {}) {
+function generateUpdateStatement(tableName, data, whereClause) {
   if (!tableName || !data || !whereClause) {
     throw new Error('Table name, data, and where clause are required');
   }
@@ -801,7 +456,6 @@ module.exports = {
   sanitizeObject,
   validateSanitizedText,
   sanitizeItemsBatch,
-  DEFAULT_FIELD_MAPPINGS,
 
   // Advanced tsqlstring-based functions
   escapeSqlValue,
@@ -811,7 +465,7 @@ module.exports = {
   escapeSqlValuesBatch,
   generateInsertStatement,
   generateUpdateStatement,
-
-  // Enhanced SQL value generation
-  generateEnhancedSQLValue
+  
+  // Simple field limits
+  FIELD_LENGTH_LIMITS
 }; 

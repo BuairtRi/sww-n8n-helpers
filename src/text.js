@@ -3,6 +3,7 @@
 
 const cheerio = require('cheerio');
 const _ = require('lodash');
+const { createParsingError, logError } = require('./error');
 
 /**
  * Clean HTML content using Cheerio
