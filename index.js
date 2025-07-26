@@ -2,6 +2,30 @@
 // Main entry point - exports all utilities with hybrid approach
 // Supports both individual function imports and module-based imports
 
+// Get package version for debugging
+const packageJson = require('./package.json');
+
+/**
+ * Get the current package version for debugging purposes
+ * @returns {string} The current version string
+ */
+function getVersion() {
+  return packageJson.version;
+}
+
+/**
+ * Get detailed package information for debugging
+ * @returns {Object} Package information including version, name, and description
+ */
+function getPackageInfo() {
+  return {
+    name: packageJson.name,
+    version: packageJson.version,
+    description: packageJson.description,
+    loadedAt: new Date().toISOString()
+  };
+}
+
 // Import all modules from src directory
 const duration = require('./src/duration');
 const file = require('./src/file');
@@ -22,6 +46,10 @@ module.exports = {
   ...batch,
   ...sqlSanitization,
   ...n8n,
+
+  // Version and debugging functions
+  getVersion,
+  getPackageInfo,
 
   // Module namespace exports (organized imports)
   duration,

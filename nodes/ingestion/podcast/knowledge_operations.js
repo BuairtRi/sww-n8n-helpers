@@ -3,7 +3,7 @@
 // Runs after podcast episode insertion to link episodes with their processing operations
 
 const { 
-  processItemsWithPairing
+  processItemsWithN8N
 } = require('sww-n8n-helpers');
 
 // Import tsqlstring directly for SQL value escaping
@@ -25,29 +25,35 @@ try {
   };
 }
 
+// Create n8n batch processing helpers with bound $ function
+const { processItems } = processItemsWithN8N($);
+
 // Get all input items (should be the results from podcast insertion)
 const insertedEpisodes = $input.all();
 
 console.log(`Processing ${insertedEpisodes.length} inserted podcast episodes for knowledge operations`);
 
-// Process each inserted episode with batch utility
-const results = processItemsWithPairing(insertedEpisodes, (item, itemIndex) => {
-  const insertResult = item.json;
-  
-  // Validate required data - should have KnowledgeSourceInstanceId from the insertion
-  if (!insertResult?.KnowledgeSourceInstanceId) {
-    throw new Error(`Missing KnowledgeSourceInstanceId from insertion result for item ${itemIndex}`);
-  }
+// Process each inserted episode with automatic context injection
+const result = await processItems(
+  insertedEpisodes,
+  // Processor function receives: $item, $json, $itemIndex
+  ($item, $json, $itemIndex) => {
+    const insertResult = $json;
+    
+    // Validate required data - should have KnowledgeSourceInstanceId from the insertion
+    if (!insertResult?.KnowledgeSourceInstanceId) {
+      throw new Error(`Missing KnowledgeSourceInstanceId from insertion result for item ${$itemIndex}`);
+    }
 
-  // Build the SQL query to create KnowledgeSourceInstanceOperations
-  const escapedInstanceId = tsqlstring.escape(insertResult.KnowledgeSourceInstanceId);
-  
-  console.log(`Debug values for item ${itemIndex}:`, {
-    originalInstanceId: insertResult.KnowledgeSourceInstanceId,
-    escapedInstanceId
-  });
+    // Build the SQL query to create KnowledgeSourceInstanceOperations
+    const escapedInstanceId = tsqlstring.escape(insertResult.KnowledgeSourceInstanceId);
+    
+    console.log(`Debug values for item ${$itemIndex}:`, {
+      originalInstanceId: insertResult.KnowledgeSourceInstanceId,
+      escapedInstanceId
+    });
 
-  const query = `
+    const query = `
 INSERT INTO KnowledgeSourceInstanceOperations
 (KnowledgeSourceInstanceOperationId, KnowledgeSourceOperationId, KnowledgeSourceInstanceId)
 SELECT NEWID(), kso.[KnowledgeSourceOperationId], ksi.KnowledgeSourceInstanceId
@@ -57,36 +63,54 @@ INNER JOIN KnowledgeSourceInstances ksi ON ksi.KnowledgeSourceId = ks.KnowledgeS
 WHERE ksi.KnowledgeSourceInstanceId = ${escapedInstanceId}
 `;
 
-  return {
-    query: query,
-    parameters: {
-      knowledgeSourceInstanceId: insertResult.KnowledgeSourceInstanceId
-    },
-    metadata: {
-      generatedAt: new Date().toISOString(),
-      queryType: 'knowledge_source_instance_operations_creation',
-      itemIndex: itemIndex,
-      hasInstanceId: !!insertResult.KnowledgeSourceInstanceId
-    }
-  };
+    return {
+      query: query,
+      parameters: {
+        knowledgeSourceInstanceId: insertResult.KnowledgeSourceInstanceId
+      },
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        queryType: 'knowledge_source_instance_operations_creation',
+        itemIndex: $itemIndex,
+        hasInstanceId: !!insertResult.KnowledgeSourceInstanceId
+      }
+    };
+  },
+  [], // No additional nodes needed
+  {
+    logErrors: true,
+    stopOnError: false
+  }
+);
+
+// Log comprehensive processing statistics
+console.log(`\n=== Knowledge Operations Processing Summary ===`);
+console.log(`Total items processed: ${result.stats.total}`);
+console.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);
+console.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);
+
+if (result.stats.failed > 0) {
+  console.log(`\nError breakdown by type:`);
+  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {
+    console.log(`  ${type}: ${count}`);
+  });
   
-}, {
-  maintainPairing: true,
-  logErrors: true,
-  stopOnError: false
-});
-
-console.log(`Generated ${results.length} knowledge operations SQL statements`);
-
-// Log summary
-const validQueries = results.filter(item => !item.json._error);
-const errorQueries = results.filter(item => item.json._error);
-
-console.log(`Summary: ${validQueries.length} valid queries, ${errorQueries.length} errors`);
-
-if (validQueries.length > 0) {
-  const sample = validQueries[0].json;
-  console.log(`Sample KnowledgeSourceInstanceId: ${sample.parameters.knowledgeSourceInstanceId}`);
+  console.log(`\nSample errors:`);
+  (result.stats.sampleErrors || []).forEach((error, index) => {
+    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);
+  });
 }
 
-return results;
+if (result.stats.successful > 0) {
+  const sample = result.results.find(item => !item.json.$error)?.json;
+  if (sample) {
+    console.log(`\nSample successful operation:`);
+    console.log(`  KnowledgeSourceInstanceId: ${sample.parameters.knowledgeSourceInstanceId}`);
+    console.log(`  Query type: ${sample.metadata.queryType}`);
+  }
+}
+
+console.log(`=== End Processing Summary ===\n`);
+
+// Return results (maintains n8n item pairing)
+return result.results;

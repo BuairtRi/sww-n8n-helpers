@@ -3,8 +3,7 @@
 // Runs after podcast episode normalization - includes integrated sanitization
 
 const { 
-  processItemsWithN8N,
-  sanitizeForSQL
+  processItemsWithN8N
 } = require('sww-n8n-helpers');
 
 // Import tsqlstring directly for SQL value escaping
@@ -29,93 +28,108 @@ try {
   };
 }
 
-// Create n8n batch processing helpers
+// DEBUG: Test direct node access before using batch utility
+const firstData = $input.all()[0];
+const ingestion = $('Ingestion Sources').itemMatching(0);
+console.log('🧪 DIRECT ACCESS TEST:');
+console.log('📋 firstData:', firstData);
+console.log('🏢 ingestion:', ingestion);
+console.log('🔑 ingestion.json:', ingestion?.json);
+console.log('🔑 ingestion keys:', ingestion?.json ? Object.keys(ingestion.json) : 'no json');
+
+// Create n8n batch processing helpers with bound $ function
 const { processItems } = processItemsWithN8N($);
 
 // Get input items (filtered items from previous steps)
-const inputItems = $input.all();
+const inputData = $input.all();
 
-console.log(`Processing ${inputItems.length} filtered input items`);
+console.log(`Processing ${inputData.length} filtered input items`);
 
 // Process items with automatic context injection and node data extraction
-const result = await processItems(
-  inputItems,
-  // Processor function receives: $item, $json, $itemIndex, podcastEpisode, ingestionSource
-  ($item, $json, $itemIndex, podcastEpisode, ingestionSource) => {
+const result = processItems(
+  inputData,
+  // Processor function receives: $item, $json, $itemIndex, podcastEpisodes, ingestionSources (camelCase)
+  ($item, $json, $itemIndex, podcastEpisodes, ingestionSources) => {
     
-    console.log(`Item ${itemIndex} - Context injection data:`, {
-      episodeTitle: podcastEpisode?.title,
-      episodeGuid: podcastEpisode?.episodeGuid,
-      sourceId: ingestionSource?.knowledgeSourceId || ingestionSource?.KnowledgeSourceId,
-      hasEpisode: !!podcastEpisode,
-      hasSource: !!ingestionSource,
+    console.log(`\n🔍 DEBUGGING ITEM ${$itemIndex}:`);
+    console.log('📋 podcastEpisodes type:', typeof podcastEpisodes);
+    console.log('📋 podcastEpisodes value:', podcastEpisodes);
+    console.log('📋 podcastEpisodes keys:', podcastEpisodes ? Object.keys(podcastEpisodes) : 'null/undefined');
+    
+    console.log('🏢 ingestionSources type:', typeof ingestionSources);
+    console.log('🏢 ingestionSources value:', ingestionSources);
+    console.log('🏢 ingestionSources keys:', ingestionSources ? Object.keys(ingestionSources) : 'null/undefined');
+    
+    // Test direct access to nodes
+    try {
+      console.log('📍 Direct $("Podcast Episodes"):', $("Podcast Episodes"));
+      console.log('📍 Direct $("Podcast Episodes").item:', $("Podcast Episodes")?.item);
+      console.log('📍 Direct $("Podcast Episodes").all():', $("Podcast Episodes")?.all());
+    } catch (e) {
+      console.log('❌ Direct Podcast Episodes access failed:', e.message);
+    }
+    
+    try {
+      console.log('📍 Direct $("Ingestion Sources"):', $("Ingestion Sources"));
+      console.log('📍 Direct $("Ingestion Sources").item:', $("Ingestion Sources")?.item);
+      console.log('📍 Direct $("Ingestion Sources").all():', $("Ingestion Sources")?.all());
+    } catch (e) {
+      console.log('❌ Direct Ingestion Sources access failed:', e.message);
+    }
+    
+    console.log(`Item ${$itemIndex} - Context injection data:`, {
+      episodeTitle: podcastEpisodes?.title,
+      episodeGuid: podcastEpisodes?.episodeGuid,
+      sourceId: ingestionSources?.knowledgeSourceId || ingestionSources?.KnowledgeSourceId,
+      hasEpisode: !!podcastEpisodes,
+      hasSource: !!ingestionSources,
       inputItemKeys: $json ? Object.keys($json) : 'no json'
     });
 
     // Try both possible field name variants
-    const sourceId = ingestionSource?.knowledgeSourceId || ingestionSource?.KnowledgeSourceId;
+    const sourceId = ingestionSources?.knowledgeSourceId || ingestionSources?.KnowledgeSourceId;
     
-    // Validate required data
+    // Validate required data with improved error messages
     if (!sourceId) {
-      throw new Error(`Missing knowledgeSourceId from Ingestion Sources for item ${$itemIndex}. Source data: ${JSON.stringify(ingestionSource)}`);
+      throw new Error(`Missing knowledgeSourceId from Ingestion Sources for item ${$itemIndex}. Available fields: ${Object.keys(ingestionSources || {}).join(', ')}`);
     }
 
-    if (!podcastEpisode?.title) {
-      throw new Error(`Missing title from Podcast Episodes for item ${$itemIndex}. Episode data: ${JSON.stringify(podcastEpisode ? Object.keys(podcastEpisode) : 'null')}`);
+    if (!podcastEpisodes?.title) {
+      throw new Error(`Missing title from Podcast Episodes for item ${$itemIndex}. Available fields: ${Object.keys(podcastEpisodes || {}).join(', ')}`);
     }
 
-    // Sanitize and escape all values for SQL insertion
-    // First sanitize the content using sww-n8n-helpers, then escape for SQL
-    const sanitizedValues = {
-      knowledgeSourceId: sourceId, // GUID - no sanitization needed
-      title: sanitizeForSQL(podcastEpisode.title, { maxLength: 250 }),
-      publicationDate: podcastEpisode.publicationDate, // ISO date - no sanitization needed
-      audioUrl: sanitizeForSQL(podcastEpisode.audioUrl, { maxLength: 2000 }),
-      episodeGuid: sanitizeForSQL(podcastEpisode.episodeGuid, { maxLength: 500 }),
-      description: sanitizeForSQL(podcastEpisode.description, { maxLength: null }),
-      summary: sanitizeForSQL(podcastEpisode.summary, { maxLength: null }),
-      episodeLink: sanitizeForSQL(podcastEpisode.episodeLink, { maxLength: 4000 }),
-      duration: podcastEpisode.duration, // Numeric - no sanitization needed
-      durationFriendly: sanitizeForSQL(podcastEpisode.durationFriendly, { maxLength: 50 }),
-      audioFileSize: podcastEpisode.audioFileSize, // Numeric - no sanitization needed
-      audioFileSizeFriendly: sanitizeForSQL(podcastEpisode.audioFileSizeFriendly, { maxLength: 50 }),
-      fileExtension: sanitizeForSQL(podcastEpisode.fileExtension, { maxLength: 10 }),
-      audioFileType: sanitizeForSQL(podcastEpisode.audioFileType, { maxLength: 100 }),
-      fileName: sanitizeForSQL(podcastEpisode.fileName, { maxLength: 255 }),
-      episodeImage: sanitizeForSQL(podcastEpisode.episodeImage, { maxLength: 4000 }),
-      author: sanitizeForSQL(podcastEpisode.author, { maxLength: 500 })
-    };
+    if (!podcastEpisodes?.episodeGuid) {
+      throw new Error(`Missing episodeGuid from Podcast Episodes for item ${$itemIndex}. This is required for episode identification.`);
+    }
 
-    // Now escape the sanitized values for SQL insertion
-    const escapedValues = {
-      knowledgeSourceId: tsqlstring.escape(sanitizedValues.knowledgeSourceId),
-      title: tsqlstring.escape(sanitizedValues.title),
-      publicationDate: tsqlstring.escape(sanitizedValues.publicationDate),
-      audioUrl: tsqlstring.escape(sanitizedValues.audioUrl),
-      episodeGuid: tsqlstring.escape(sanitizedValues.episodeGuid),
-      description: tsqlstring.escape(sanitizedValues.description),
-      summary: tsqlstring.escape(sanitizedValues.summary),
-      episodeLink: tsqlstring.escape(sanitizedValues.episodeLink),
-      duration: sanitizedValues.duration || 'NULL',
-      durationFriendly: tsqlstring.escape(sanitizedValues.durationFriendly),
-      audioFileSize: sanitizedValues.audioFileSize || 'NULL',
-      audioFileSizeFriendly: tsqlstring.escape(sanitizedValues.audioFileSizeFriendly),
-      fileExtension: tsqlstring.escape(sanitizedValues.fileExtension),
-      audioFileType: tsqlstring.escape(sanitizedValues.audioFileType),
-      fileName: tsqlstring.escape(sanitizedValues.fileName),
-      episodeImage: tsqlstring.escape(sanitizedValues.episodeImage),
-      author: tsqlstring.escape(sanitizedValues.author)
+    // Prepare values for SQL insertion (tsqlstring.escape handles SQL injection protection)
+    const sqlValues = {
+      knowledgeSourceId: tsqlstring.escape(sourceId),
+      title: tsqlstring.escape(podcastEpisodes.title?.substring(0, 250) || null),
+      publicationDate: tsqlstring.escape(podcastEpisodes.publicationDate),
+      audioUrl: tsqlstring.escape(podcastEpisodes.audioUrl?.substring(0, 2000) || null),
+      episodeGuid: tsqlstring.escape(podcastEpisodes.episodeGuid?.substring(0, 500) || null),
+      description: tsqlstring.escape(podcastEpisodes.description || null),
+      summary: tsqlstring.escape(podcastEpisodes.summary || null),
+      episodeLink: tsqlstring.escape(podcastEpisodes.episodeLink?.substring(0, 4000) || null),
+      duration: podcastEpisodes.duration || 'NULL',
+      durationFriendly: tsqlstring.escape(podcastEpisodes.durationFriendly?.substring(0, 50) || null),
+      audioFileSize: podcastEpisodes.audioFileSize || 'NULL',
+      audioFileSizeFriendly: tsqlstring.escape(podcastEpisodes.audioFileSizeFriendly?.substring(0, 50) || null),
+      fileExtension: tsqlstring.escape(podcastEpisodes.fileExtension?.substring(0, 10) || null),
+      audioFileType: tsqlstring.escape(podcastEpisodes.audioFileType?.substring(0, 100) || null),
+      fileName: tsqlstring.escape(podcastEpisodes.fileName?.substring(0, 255) || null),
+      episodeImage: tsqlstring.escape(podcastEpisodes.episodeImage?.substring(0, 4000) || null),
+      author: tsqlstring.escape(podcastEpisodes.author?.substring(0, 500) || null)
     };
     
     console.log(`Debug values for item ${$itemIndex}:`, {
-      originalTitle: podcastEpisode.title,
-      sanitizedTitle: sanitizedValues.title,
-      escapedTitle: escapedValues.title,
-      originalGuid: podcastEpisode.episodeGuid,
-      sanitizedGuid: sanitizedValues.episodeGuid,
-      escapedGuid: escapedValues.episodeGuid,
-      duration: podcastEpisode.duration,
-      fileSize: podcastEpisode.audioFileSize
+      originalTitle: podcastEpisodes.title,
+      sqlTitle: sqlValues.title,
+      originalGuid: podcastEpisodes.episodeGuid,
+      sqlGuid: sqlValues.episodeGuid,
+      duration: podcastEpisodes.duration,
+      fileSize: podcastEpisodes.audioFileSize
     });
 
     // Build the insertion SQL query
@@ -126,23 +140,23 @@ OUTPUT INSERTED.KnowledgeSourceInstanceId
 VALUES
 (
   NEWID(), 
-  ${escapedValues.knowledgeSourceId}, 
-  ${escapedValues.title}, 
-  ${escapedValues.publicationDate}, 
-  ${escapedValues.audioUrl}, 
-  ${escapedValues.episodeGuid}, 
-  ${escapedValues.description}, 
-  ${escapedValues.summary}, 
-  ${escapedValues.episodeLink}, 
-  ${escapedValues.duration}, 
-  ${escapedValues.durationFriendly},
-  ${escapedValues.audioFileSize},
-  ${escapedValues.audioFileSizeFriendly},
-  ${escapedValues.fileExtension},
-  ${escapedValues.audioFileType},
-  ${escapedValues.fileName},
-  ${escapedValues.episodeImage},
-  ${escapedValues.author}
+  ${sqlValues.knowledgeSourceId}, 
+  ${sqlValues.title}, 
+  ${sqlValues.publicationDate}, 
+  ${sqlValues.audioUrl}, 
+  ${sqlValues.episodeGuid}, 
+  ${sqlValues.description}, 
+  ${sqlValues.summary}, 
+  ${sqlValues.episodeLink}, 
+  ${sqlValues.duration}, 
+  ${sqlValues.durationFriendly},
+  ${sqlValues.audioFileSize},
+  ${sqlValues.audioFileSizeFriendly},
+  ${sqlValues.fileExtension},
+  ${sqlValues.audioFileType},
+  ${sqlValues.fileName},
+  ${sqlValues.episodeImage},
+  ${sqlValues.author}
 )
 `;
 
@@ -152,31 +166,31 @@ VALUES
         // Original values
         original: {
           knowledgeSourceId: sourceId,
-          episodeTitle: podcastEpisode.title,
-          episodeGuid: podcastEpisode.episodeGuid,
-          publicationDate: podcastEpisode.publicationDate,
-          audioUrl: podcastEpisode.audioUrl,
-          duration: podcastEpisode.duration,
-          audioFileSize: podcastEpisode.audioFileSize
+          episodeTitle: podcastEpisodes.title,
+          episodeGuid: podcastEpisodes.episodeGuid,
+          publicationDate: podcastEpisodes.publicationDate,
+          audioUrl: podcastEpisodes.audioUrl,
+          duration: podcastEpisodes.duration,
+          audioFileSize: podcastEpisodes.audioFileSize
         },
-        // Sanitized values (for reference)
-        sanitized: {
-          episodeTitle: sanitizedValues.title,
-          episodeGuid: sanitizedValues.episodeGuid,
-          audioUrl: sanitizedValues.audioUrl,
-          description: sanitizedValues.description,
-          summary: sanitizedValues.summary
+        // SQL-ready values (for reference)
+        sqlReady: {
+          episodeTitle: sqlValues.title,
+          episodeGuid: sqlValues.episodeGuid,
+          audioUrl: sqlValues.audioUrl,
+          description: sqlValues.description,
+          summary: sqlValues.summary
         }
       },
       metadata: {
         generatedAt: new Date().toISOString(),
         queryType: 'podcast_episode_insertion',
         itemIndex: $itemIndex,
-        hasTitle: !!podcastEpisode.title,
-        hasGuid: !!podcastEpisode.episodeGuid,
-        hasAudioUrl: !!podcastEpisode.audioUrl,
-        hasDuration: podcastEpisode.duration > 0,
-        hasFileSize: podcastEpisode.audioFileSize > 0
+        hasTitle: !!podcastEpisodes.title,
+        hasGuid: !!podcastEpisodes.episodeGuid,
+        hasAudioUrl: !!podcastEpisodes.audioUrl,
+        hasDuration: podcastEpisodes.duration > 0,
+        hasFileSize: podcastEpisodes.audioFileSize > 0
       }
     };
   },
@@ -187,24 +201,35 @@ VALUES
   }
 );
 
-// Log summary using the enhanced result structure
-console.log(`Processing completed:`, {
-  total: result.stats.total,
-  successful: result.stats.successful,
-  failed: result.stats.failed,
-  successRate: `${(result.stats.successRate * 100).toFixed(1)}%`
-});
+// Log comprehensive processing statistics
+console.log(`\n=== Podcast Episode Processing Summary ===`);
+console.log(`Total items processed: ${result.stats.total}`);
+console.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);
+console.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);
 
 if (result.stats.failed > 0) {
-  console.log(`Errors encountered:`, result.stats.errorBreakdown);
-  console.log(`Sample errors:`, result.stats.sampleErrors);
+  console.log(`\nError breakdown by type:`);
+  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {
+    console.log(`  ${type}: ${count}`);
+  });
+  
+  console.log(`\nSample errors:`);
+  (result.stats.sampleErrors || []).forEach((error, index) => {
+    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);
+  });
 }
 
 if (result.stats.successful > 0) {
   const sample = result.results.find(item => !item.json.$error)?.json;
   if (sample) {
-    console.log(`Sample episode: "${sample.parameters.original.episodeTitle}" - GUID: ${sample.parameters.original.episodeGuid}`);
+    console.log(`\nSample successful episode: "${sample.parameters.original.episodeTitle}"`);
+    console.log(`  GUID: ${sample.parameters.original.episodeGuid}`);
+    console.log(`  Publication Date: ${sample.parameters.original.publicationDate}`);
+    console.log(`  Duration: ${sample.parameters.original.duration}s`);
   }
 }
 
+console.log(`=== End Processing Summary ===\n`);
+
+// Return results (maintains n8n item pairing)
 return result.results;

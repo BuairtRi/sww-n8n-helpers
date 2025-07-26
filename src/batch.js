@@ -6,6 +6,29 @@ const { createProcessingError } = require('./validation');
 const { extractNodeData, getNodeValue } = require('./n8n');
 
 /**
+ * Convert node name to camelCase for use as processor parameter
+ * @param {string} nodeName - Original node name (may have spaces)
+ * @returns {string} camelCase version of the node name
+ */
+function toCamelCase(nodeName) {
+  return nodeName
+    // Replace special characters and underscores with spaces, then split
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/_/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 0) // Remove empty strings
+    .map((word, index) => {
+      if (index === 0) {
+        // First word lowercase
+        return word.toLowerCase();
+      }
+      // Subsequent words capitalized
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join('');
+}
+
+/**
  * Create N8N-specific batch processing helpers with bound $ function
  * @param {Function} $fn - N8N's $ function from Code node context
  * @returns {Object} Helper functions with $ pre-bound and n8n-optimized
@@ -15,21 +38,22 @@ function processItemsWithN8N($fn) {
   /**
    * Process n8n items with automatic context injection and node data retrieval
    * @param {Array} items - N8N items from $input.all() or $('NodeName').all()
-   * @param {Function} processor - Processing function that receives context variables
-   * @param {Array} nodeNames - Array of node names to extract data for each item (optional)
+   * @param {Function} processor - Processing function that receives: ($item, $json, $itemIndex, ...nodeData)
+   *   - $item: Full n8n item object
+   *   - $json: Item's json data
+   *   - $itemIndex: Current item index
+   *   - ...nodeData: Individual node data in nodeNames array order, with camelCase parameter names
+   *     Example: ['Ingestion Sources', 'User Settings'] → (item, json, itemIndex, ingestionSources, userSettings)
+   * @param {Array} nodeNames - Array of node names to extract data for each item (can contain spaces/special chars)
    * @param {Object} options - Processing options
-   * @param {number} options.batchSize - Process in batches of this size
    * @param {boolean} options.logErrors - Log processing errors (default: true)
    * @param {boolean} options.stopOnError - Stop processing on first error (default: false)
-   * @param {number} options.concurrency - For parallel processing (default: 1 = sequential)
    * @returns {Object} Processing results with items, errors, and stats
    */
-  async function processItems(items, processor, nodeNames = [], options = {}) {
+  function processItems(items, processor, nodeNames = [], options = {}) {
     const { 
-      batchSize = null,
       logErrors = true, 
-      stopOnError = false,
-      concurrency = 1
+      stopOnError = false
     } = options;
     
     // Validate inputs
@@ -47,95 +71,105 @@ function processItemsWithN8N($fn) {
     
     const results = [];
     const errors = [];
-    let processedCount = 0;
     
-    // Determine processing strategy
-    if (concurrency > 1) {
-      return await processItemsParallel(items, processor, nodeNames, { ...options, errors, results });
-    }
-    
-    // Sequential processing with optional batching
-    const batches = batchSize && batchSize > 0 ? _.chunk(items, batchSize) : [items];
-    
-    for (const batch of batches) {
-      const batchStartIndex = processedCount;
+    // Simple synchronous loop through all items
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const itemIndex = i;
       
-      for (let i = 0; i < batch.length; i++) {
-        const item = batch[i];
-        const itemIndex = item.$itemIndex;
-        
-        try {
-          // Extract node data for this item index
-          const nodeData = {};
-          for (const nodeName of nodeNames) {
-            try {
-              const nodeItem = $fn(nodeName)?.itemMatching?.(itemIndex) || $fn(nodeName)?.item;
-              nodeData[nodeName] = nodeItem?.json || null;
-            } catch (nodeError) {
-              if (logErrors) {
-                console.warn(`Failed to extract data from node '${nodeName}' for item ${itemIndex}:`, nodeError.message);
+      try {
+        // Extract node data for this item index
+        const nodeData = {};
+        for (const nodeName of nodeNames) {
+          try {
+            // First try item matching by index (available in Code nodes)
+            let nodeItem = $fn(nodeName)?.itemMatching?.(itemIndex);
+            
+            // If that doesn't work, try the current item
+            if (!nodeItem) {
+              nodeItem = $fn(nodeName)?.item;
+            }
+            
+            // If still no item, try getting from all items array
+            if (!nodeItem) {
+              const allNodeItems = $fn(nodeName)?.all();
+              if (allNodeItems && allNodeItems.length > 0) {
+                // Use the item at the current index, or the last available item
+                nodeItem = allNodeItems[Math.min(itemIndex, allNodeItems.length - 1)];
+                if (logErrors && itemIndex >= allNodeItems.length) {
+                  console.warn(`Node '${nodeName}' has only ${allNodeItems.length} items, using last item for index ${itemIndex}`);
+                }
               }
-              nodeData[nodeName] = null;
             }
-          }
-          
-          // Create context variables for the processor
-          const $item = item;
-          const $json = item.json || item;
-          const $itemIndex = itemIndex;
-          
-          // Call processor with context variables as parameters
-          const processorArgs = [$item, $json, $itemIndex, ...nodeNames.map(name => nodeData[name])];
-          const result = await processor(...processorArgs);
-          
-          // Add successful result
-          results.push({
-            json: result,
-            pairedItem: itemIndex
-          });
-          
-        } catch (error) {
-          if (logErrors) {
-            console.error(`Processing failed for item ${itemIndex}:`, error.message);
-          }
-          
-          // Create error object
-          const errorObj = createProcessingError(
-            'processing_error',
-            error.message,
-            { 
-              itemIndex, 
-              originalData: _.pick(item.json || item, ['id', 'title', 'name', 'guid']),
-              stack: error.stack
+            
+            nodeData[nodeName] = nodeItem?.json || null;
+          } catch (nodeError) {
+            if (logErrors) {
+              console.warn(`Failed to extract data from node '${nodeName}' for item ${itemIndex}:`, nodeError.message);
             }
-          );
-          
-          // Add error to results with $error property
-          results.push({
-            json: {
-              ...(item.json || item),
-              $error: errorObj
-            },
-            pairedItem: itemIndex
-          });
-          
-          // Add to errors array
-          errors.push({
-            itemIndex,
-            error: errorObj,
-            originalItem: item
-          });
-          
-          if (stopOnError) {
-            break;
+            nodeData[nodeName] = null;
           }
         }
-      }
-      
-      processedCount += batch.length;
-      
-      if (stopOnError && errors.length > 0) {
-        break;
+        
+        // Create context variables for the processor
+        const $item = item;
+        const $json = item.json || item;
+        const $itemIndex = itemIndex;
+        
+        // Call processor with context variables as parameters
+        // Use camelCase parameter names for better JavaScript function signatures
+        const camelCaseNodeData = {};
+        const nodeDataParams = nodeNames.map(name => {
+          const camelName = toCamelCase(name);
+          const data = nodeData[name];
+          camelCaseNodeData[camelName] = data;
+          return data;
+        });
+        
+        const processorArgs = [$item, $json, $itemIndex, ...nodeDataParams];
+        const result = processor(...processorArgs);
+        
+        // Add successful result
+        results.push({
+          json: result,
+          pairedItem: itemIndex
+        });
+        
+      } catch (error) {
+        if (logErrors) {
+          console.error(`Processing failed for item ${itemIndex}:`, error.message);
+        }
+        
+        // Create error object
+        const errorObj = createProcessingError(
+          'processing_error',
+          error.message,
+          { 
+            itemIndex, 
+            originalData: _.pick(item.json || item, ['id', 'title', 'name', 'guid']),
+            stack: error.stack
+          }
+        );
+        
+        // Add error to results with $error property
+        results.push({
+          json: {
+            ...(item.json || item),
+            $error: errorObj
+          },
+          pairedItem: itemIndex
+        });
+        
+        // Add to errors array
+        errors.push({
+          itemIndex,
+          error: errorObj,
+          originalItem: item
+        });
+        
+        if (stopOnError) {
+          break;
+        }
       }
     }
     
@@ -148,183 +182,8 @@ function processItemsWithN8N($fn) {
       stats
     };
   }
-  
-  /**
-   * Process items in parallel with automatic context injection
-   * @private
-   */
-  async function processItemsParallel(items, processor, nodeNames, options) {
-    const { concurrency, logErrors, errors, results } = options;
-    
-    const chunks = _.chunk(items, Math.ceil(items.length / concurrency));
-    const allPromises = [];
-    
-    chunks.forEach((chunk, chunkIndex) => {
-      const chunkPromise = Promise.all(
-        chunk.map(async (item, itemIndexInChunk) => {
-          const itemIndex = chunkIndex * chunk.length + itemIndexInChunk;
-          
-          try {
-            // Extract node data for this item index
-            const nodeData = {};
-            for (const nodeName of nodeNames) {
-              try {
-                const nodeItem = $fn(nodeName)?.itemMatching?.(itemIndex) || $fn(nodeName)?.item;
-                nodeData[nodeName] = nodeItem?.json || null;
-              } catch (nodeError) {
-                if (logErrors) {
-                  console.warn(`Failed to extract data from node '${nodeName}' for item ${itemIndex}:`, nodeError.message);
-                }
-                nodeData[nodeName] = null;
-              }
-            }
-            
-            // Create context variables
-            const $item = item;
-            const $json = item.json || item;
-            const $itemIndex = itemIndex;
-            
-            // Call processor
-            const processorArgs = [$item, $json, $itemIndex, ...nodeNames.map(name => nodeData[name])];
-            const result = await processor(...processorArgs);
-            
-            return {
-              success: true,
-              data: result,
-              itemIndex
-            };
-            
-          } catch (error) {
-            if (logErrors) {
-              console.error(`Processing failed for item ${itemIndex}:`, error.message);
-            }
-            
-            return {
-              success: false,
-              error,
-              item,
-              itemIndex
-            };
-          }
-        })
-      );
-      
-      allPromises.push(chunkPromise);
-    });
-    
-    // Wait for all chunks to complete
-    const chunkResults = await Promise.all(allPromises);
-    const flatResults = _.flatten(chunkResults);
-    
-    // Process results and errors
-    flatResults.forEach(result => {
-      if (result.success) {
-        results.push({
-          json: result.data,
-          pairedItem: result.itemIndex
-        });
-      } else {
-        const errorObj = createProcessingError(
-          'async_processing_error',
-          result.error.message,
-          { 
-            itemIndex: result.itemIndex,
-            originalData: _.pick(result.item.json || result.item, ['id', 'title', 'name', 'guid']),
-            stack: result.error.stack
-          }
-        );
-        
-        results.push({
-          json: {
-            ...(result.item.json || result.item),
-            $error: errorObj
-          },
-          pairedItem: result.itemIndex
-        });
-        
-        errors.push({
-          itemIndex: result.itemIndex,
-          error: errorObj,
-          originalItem: result.item
-        });
-      }
-    });
-    
-    const stats = calculateStats(results, errors);
-    
-    return {
-      results,
-      errors,
-      stats
-    };
-  }
-  
-  /**
-   * Filter and process items with automatic context injection
-   * @param {Array} items - N8N items to filter and process
-   * @param {Function} filterFn - Function to filter items (receives same context as processor)
-   * @param {Function} processor - Processing function
-   * @param {Array} nodeNames - Array of node names to extract data for each item
-   * @param {Object} options - Processing options
-   * @returns {Object} Processing results with filtering stats
-   */
-  async function filterAndProcess(items, filterFn, processor, nodeNames = [], options = {}) {
-    const filteredItems = [];
-    const originalIndices = [];
-    
-    // Filter items with context injection
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      
-      try {
-        // Extract node data for filtering
-        const nodeData = {};
-        for (const nodeName of nodeNames) {
-          try {
-            const nodeItem = $fn(nodeName)?.itemMatching?.(i) || $fn(nodeName)?.item;
-            nodeData[nodeName] = nodeItem?.json || null;
-          } catch (nodeError) {
-            nodeData[nodeName] = null;
-          }
-        }
-        
-        // Create context variables
-        const $item = item;
-        const $json = item.json || item;
-        const $itemIndex = i;
-        
-        // Call filter function with context
-        const filterArgs = [$item, $json, $itemIndex, ...nodeNames.map(name => nodeData[name])];
-        const shouldInclude = await filterFn(...filterArgs);
-        
-        if (shouldInclude) {
-          filteredItems.push(item);
-          originalIndices.push(i);
-        }
-        
-      } catch (error) {
-        console.warn(`Filter function failed for item ${i}:`, error.message);
-        // Skip item on filter error
-      }
-    }
-    
-    // Process filtered items
-    const processResult = await processItems(filteredItems, processor, nodeNames, options);
-    
-    return {
-      ...processResult,
-      filterStats: {
-        totalItems: items.length,
-        filteredCount: filteredItems.length,
-        filterRate: filteredItems.length / items.length,
-        originalIndices
-      }
-    };
-  }
-  
   return {
-    processItems,
-    filterAndProcess
+    processItems
   };
 }
 
@@ -460,6 +319,7 @@ function processBatch(items, processor, startIndex, options) {
 
 module.exports = {
   processItemsWithN8N,
+  toCamelCase, // Export for testing/debugging
   // Legacy exports (deprecated)
   processItemsWithPairing
 };

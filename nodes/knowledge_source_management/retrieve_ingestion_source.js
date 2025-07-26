@@ -1,7 +1,7 @@
 // n8n Code Node: Group Knowledge Source Quality Check Configurations
 // Groups SQL query results by KnowledgeSourceId using sww-n8n-helpers utilities
 
-const { processItemsWithPairing, validation } = require('sww-n8n-helpers');
+const { processItemsWithN8N, validation } = require('sww-n8n-helpers');
 
 const items = $input.all();
 
@@ -97,27 +97,44 @@ const groupedItems = Array.from(sourceGroups.values()).map((group, index) => ({
     index: index
 }));
 
-// Process with pairing and add summary info
-const results = processItemsWithPairing(groupedItems, (item, index) => {
-    const group = item.json;
+// Create N8N batch processing helpers with bound $ function
+const { processItems } = processItemsWithN8N($);
 
-    // Add summary info
-    group.summary = {
-        knowledgeSourceName: group.knowledgeSource.name,
-        sourceType: group.knowledgeSource.type,
-        isActive: group.knowledgeSource.active,
-        qualityCheckOperation: group.knowledgeOperation.name,
-        configuredPrompts: Object.values(group.prompts).filter(p => p.template).length
-    };
+// Process with modern batch processing and add summary info
+const result = await processItems(
+    groupedItems,
+    // Processor receives: $item, $json, $itemIndex
+    ($item, $json, $itemIndex) => {
+        const group = $json;
 
-    return group;
-}, {
-    maintainPairing: true,
-    logErrors: true,
-    stopOnError: false
-});
+        // Add summary info
+        group.summary = {
+            knowledgeSourceName: group.knowledgeSource.name,
+            sourceType: group.knowledgeSource.type,
+            isActive: group.knowledgeSource.active,
+            qualityCheckOperation: group.knowledgeOperation.name,
+            configuredPrompts: Object.values(group.prompts).filter(p => p.template).length
+        };
+
+        return group;
+    },
+    [], // No additional nodes needed
+    {
+        logErrors: true,
+        stopOnError: false
+    }
+);
+
+const results = result.results;
 
 console.log(`Grouped into ${results.length} Knowledge Source configurations`);
+
+// Log processing statistics
+console.log(`Processing completed: ${result.stats.successful}/${result.stats.total} successful (${(result.stats.successRate * 100).toFixed(1)}%)`);
+if (result.stats.failed > 0) {
+    console.log(`Failed items: ${result.stats.failed}`);
+    console.log('Error breakdown:', result.stats.errorBreakdown);
+}
 
 // Log summary using validation utilities for clean object handling
 if (results.length > 0) {

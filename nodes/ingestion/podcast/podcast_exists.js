@@ -3,7 +3,7 @@
 // Handles multiple podcast episodes in "Run Once for All Items" mode
 
 const { 
-  processItemsWithPairing
+  processItemsWithN8N
 } = require('sww-n8n-helpers');
 
 // Import tsqlstring directly for SQL value escaping
@@ -25,48 +25,61 @@ try {
   };
 }
 
+// Create batch processing helpers with bound $ function
+const { processItems } = processItemsWithN8N($);
+
 // Get all input items (podcast episodes)
 const podcastEpisodes = $input.all();
-const ingestionSources = $('Ingestion Sources').all();
 
 console.log(`Processing ${podcastEpisodes.length} podcast episodes for existence check`);
 
-// Create a lookup map for ingestion sources by index
-const sourceMap = new Map();
-ingestionSources.forEach((source, index) => {
-  sourceMap.set(index, source.json);
-});
+// Process each podcast episode with modern batch utility
+const result = processItems(
+  podcastEpisodes,
+  // Processor receives: $item, $json, $itemIndex, ingestionSources (camelCase from "Ingestion Sources")
+  ($item, json, itemIndex, ingestionSources) => {
+    console.log('itemIndex', itemIndex);
+    console.log('ingestionSources parameter:', ingestionSources);
+    console.log('ingestionSources type:', typeof ingestionSources);
+    
+    // Debug: Try to access the node directly
+    try {
+      const directAccess = $('Ingestion Sources');
+      console.log('Direct $ access result:', directAccess);
+      console.log('Direct $.item:', directAccess?.item);
+      console.log('Direct $.item.json:', directAccess?.item?.json);
+      console.log('Direct $.all():', directAccess?.all());
+    } catch (e) {
+      console.log('Direct access failed:', e.message);
+    }
+    
+    // Validate required data - now using clean camelCase parameter name
+    if (!ingestionSources?.knowledgeSourceId) {
+      console.log('❌ ingestionSources is missing knowledgeSourceId');
+      console.log('ingestionSources content:', JSON.stringify(ingestionSources, null, 2));
+      throw new Error(`Missing knowledgeSourceId from Ingestion Sources node for item ${itemIndex}`);
+    }
 
-// Process each podcast episode with batch utility
-const results = processItemsWithPairing(podcastEpisodes, (item, itemIndex) => {
-  const podcastEpisode = item.json;
-  const ingestionSource = sourceMap.get(itemIndex) || ingestionSources[0]?.json; // Fallback to first source if mapping fails
+    if (!json?.episodeGuid && !json?.title) {
+      throw new Error(`Missing both episodeGuid and title from Podcast Episodes for item ${itemIndex}`);
+    }
+
+    // Build the existence check query for this episode
+    const escapedSourceId = tsqlstring.escape(ingestionSources.knowledgeSourceId);
+    const escapedGuid = tsqlstring.escape(json.episodeGuid);
+    const escapedTitle = tsqlstring.escape(json.title);
+    const escapedDate = tsqlstring.escape(json.publicationDate);
   
-  // Validate required data
-  if (!ingestionSource?.knowledgeSourceId) {
-    throw new Error(`Missing knowledgeSourceId from Ingestion Sources node for item ${itemIndex}`);
-  }
+    console.log(`Debug values for item ${itemIndex}:`, {
+      originalSourceId: ingestionSources.knowledgeSourceId,
+      escapedSourceId,
+      originalGuid: json.episodeGuid,
+      escapedGuid,
+      originalTitle: json.title,
+      escapedTitle
+    });
 
-  if (!podcastEpisode?.episodeGuid && !podcastEpisode?.title) {
-    throw new Error(`Missing both episodeGuid and title from Podcast Episodes for item ${itemIndex}`);
-  }
-
-  // Build the existence check query for this episode
-  const escapedSourceId = tsqlstring.escape(ingestionSource.knowledgeSourceId);
-  const escapedGuid = tsqlstring.escape(podcastEpisode.episodeGuid);
-  const escapedTitle = tsqlstring.escape(podcastEpisode.title);
-  const escapedDate = tsqlstring.escape(podcastEpisode.publicationDate);
-  
-  console.log(`Debug values for item ${itemIndex}:`, {
-    originalSourceId: ingestionSource.knowledgeSourceId,
-    escapedSourceId,
-    originalGuid: podcastEpisode.episodeGuid,
-    escapedGuid,
-    originalTitle: podcastEpisode.title,
-    escapedTitle
-  });
-
-  const query = `
+    const query = `
 SELECT CASE 
   WHEN EXISTS (
     SELECT KnowledgeSourceInstanceId 
@@ -90,27 +103,30 @@ END as episode_exists
   return {
     query: query,
     parameters: {
-      knowledgeSourceId: ingestionSource.knowledgeSourceId,
-      episodeGuid: podcastEpisode.episodeGuid,
-      episodeTitle: podcastEpisode.title,
-      publicationDate: podcastEpisode.publicationDate
+      knowledgeSourceId: ingestionSources.knowledgeSourceId,
+      episodeGuid: json.episodeGuid,
+      episodeTitle: json.title,
+      publicationDate: json.publicationDate
     },
     metadata: {
       generatedAt: new Date().toISOString(),
       checkType: 'podcast_episode_existence',
-      primaryCheck: podcastEpisode.episodeGuid ? 'guid' : 'title_date',
-      hasGuid: !!podcastEpisode.episodeGuid,
-      hasTitle: !!podcastEpisode.title,
-      hasDate: !!podcastEpisode.publicationDate,
+      primaryCheck: json.episodeGuid ? 'guid' : 'title_date',
+      hasGuid: !!json.episodeGuid,
+      hasTitle: !!json.title,
+      hasDate: !!json.publicationDate,
       itemIndex: itemIndex
     }
   };
-}, {
-  maintainPairing: true,
-  logErrors: true,
-  stopOnError: false
-});
+  },
+  ['Ingestion Sources'], // Node names to extract data from
+  {
+    logErrors: true,
+    stopOnError: false
+  }
+);
 
-console.log(`Generated ${results.length} podcast existence check queries`);
+console.log(`Generated ${result.results.length} podcast existence check queries`);
+console.log(`Processing stats: ${result.stats.successful}/${result.stats.total} successful`);
 
-return results;
+return result.results;

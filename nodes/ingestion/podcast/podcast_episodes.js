@@ -3,7 +3,7 @@
 // Placed directly after Check Podcast Feed node
 
 const { 
-  processItemsWithPairing,
+  processItemsWithN8N,
   parseDurationToSeconds,
   formatFriendlyDuration,
   generateSafeFileName,
@@ -20,13 +20,16 @@ const _ = require('lodash');
 const prettyBytes = require('pretty-bytes');
 const moment = require('moment');
 
+// Create batch processing helpers with bound $ function
+const { processItems } = processItemsWithN8N($);
+
 const feedItems = $input.all();
 
 console.log(`Processing ${feedItems.length} feed items`);
 
-// Process each feed item using the batch processing utility
-const results = processItemsWithPairing(feedItems, (item, itemIndex) => {
-  const episode = item.json;
+// Process each feed item using the modern batch processing utility
+const batchResult = processItems(feedItems, ($item, $json, $itemIndex) => {
+  const episode = $json;
   
   // Extract and validate audio URL using utility
   const rawAudioUrl = _.get(episode, 'enclosure.url') || episode.link;
@@ -106,7 +109,7 @@ const results = processItemsWithPairing(feedItems, (item, itemIndex) => {
     // Processing metadata
     processingMetadata: {
       normalizedAt: moment().toISOString(),
-      itemIndex: itemIndex,
+      itemIndex: $itemIndex,
       hasDescription: !_.isEmpty(cleanHtml(createFallbackChain(episode, ['content', 'content:encoded'], ''))),
       hasDuration: !_.isNull(parseDurationToSeconds(_.get(episode, 'itunes.duration'))),
       hasValidAudioUrl: isValidAudioUrl,
@@ -119,16 +122,14 @@ const results = processItemsWithPairing(feedItems, (item, itemIndex) => {
     }
   };
   
-  // Validate required fields
+  // Validate required fields - throw error for batch processor to handle
   if (_.isEmpty(normalizedEpisode.title) || !normalizedEpisode.audioUrl) {
-    normalizedEpisode._error = {
-      type: 'validation_error',
-      message: 'Missing required fields',
-      missingFields: {
-        title: _.isEmpty(normalizedEpisode.title),
-        audioUrl: !normalizedEpisode.audioUrl
-      }
-    };
+    throw new Error(`Missing required fields: ${
+      [
+        _.isEmpty(normalizedEpisode.title) ? 'title' : null,
+        !normalizedEpisode.audioUrl ? 'audioUrl' : null
+      ].filter(Boolean).join(', ')
+    }`);
   }
   
   // Process publication date using validation utility with moment fallback
@@ -168,23 +169,24 @@ const results = processItemsWithPairing(feedItems, (item, itemIndex) => {
   
   return normalizedEpisode;
   
-}, {
-  maintainPairing: true,
+}, [], {
   logErrors: true,
   stopOnError: false
 });
 
-console.log(`Successfully processed ${results.length} items`);
+console.log(`Successfully processed ${batchResult.results.length} items`);
 
-// Log summary using lodash (maintaining original logic)
-const validItems = _.filter(results, item => !item.json._error);
-const errorItems = _.filter(results, item => item.json._error);
+// Log processing statistics
+console.log(`Summary: ${batchResult.stats.successful} valid items, ${batchResult.stats.failed} errors`);
+if (batchResult.stats.successRate < 1) {
+  console.log(`Success rate: ${(batchResult.stats.successRate * 100).toFixed(1)}%`);
+}
 
-console.log(`Summary: ${validItems.length} valid items, ${errorItems.length} errors`);
-
+// Log sample result (maintaining original logic)
+const validItems = _.filter(batchResult.results, item => !item.json.$error);
 if (!_.isEmpty(validItems)) {
   const sample = validItems[0].json;
   console.log(`Sample: "${sample.title}" (${sample.durationFriendly || 'no duration'}) - ${sample.publicationDateFriendly}`);
 }
 
-return results;
+return batchResult.results;
