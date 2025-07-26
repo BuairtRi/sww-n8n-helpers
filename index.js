@@ -32,7 +32,9 @@ const file = require('./src/file');
 const text = require('./src/text');
 const validation = require('./src/validation');
 const batch = require('./src/batch');
-const sqlSanitization = require('./src/sql-sanitization');
+const dataTransform = require('./src/data-transform');
+const sql = require('./src/sql');
+const sqlSanitization = require('./src/sql-sanitization'); // Legacy compatibility
 const n8n = require('./src/n8n');
 
 // Export all functions from all modules (individual imports)
@@ -44,7 +46,9 @@ module.exports = {
   ...text,
   ...validation,
   ...batch,
-  ...sqlSanitization,
+  ...dataTransform,
+  ...sql,
+  ...sqlSanitization, // Legacy exports for backward compatibility
   ...n8n,
 
   // Version and debugging functions
@@ -57,7 +61,9 @@ module.exports = {
   text,
   validation,
   batch,
-  sqlSanitization,
+  dataTransform,
+  sql,
+  sqlSanitization, // Legacy - use dataTransform + sql instead
   n8n
 };
 

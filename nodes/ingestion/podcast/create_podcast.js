@@ -3,9 +3,11 @@
 // Runs after podcast episode normalization - includes integrated sanitization
 
 const { 
-  processItemsWithN8N,
-  generateInsertStatement,
-  createRawSql
+  processItemsWithAccessors,
+  normalizeData,
+  COMMON_FIELD_CONFIGS,
+  generateInsert,
+  raw
 } = require('sww-n8n-helpers');
 
 // DEBUG: Test direct node access before using batch utility
@@ -17,18 +19,21 @@ console.log('🏢 ingestion:', ingestion);
 console.log('🔑 ingestion.json:', ingestion?.json);
 console.log('🔑 ingestion keys:', ingestion?.json ? Object.keys(ingestion.json) : 'no json');
 
-// Create n8n batch processing helpers with bound $ function
-const { processItems } = processItemsWithN8N($);
+// Define node accessors that preserve itemMatching behavior
+const nodeAccessors = {
+  'Podcast Episodes': (itemIndex) => $('Podcast Episodes').itemMatching(itemIndex)?.json,
+  'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json
+};
 
 // Get input items (filtered items from previous steps)
 const inputData = $input.all();
 
 console.log(`Processing ${inputData.length} filtered input items`);
 
-// Process items with automatic context injection and node data extraction
-const result = processItems(
+// Process items with accessor pattern for reliable node data access
+const result = await processItemsWithAccessors(
   inputData,
-  // Processor function receives: $item, $json, $itemIndex, podcastEpisodes, ingestionSources (camelCase)
+  // Processor function receives: $item, $json, $itemIndex, podcastEpisodes, ingestionSources (from accessors)
   ($item, $json, $itemIndex, podcastEpisodes, ingestionSources) => {
     
     console.log(`\n🔍 DEBUGGING ITEM ${$itemIndex}:`);
@@ -40,22 +45,7 @@ const result = processItems(
     console.log('🏢 ingestionSources value:', ingestionSources);
     console.log('🏢 ingestionSources keys:', ingestionSources ? Object.keys(ingestionSources) : 'null/undefined');
     
-    // Test direct access to nodes
-    try {
-      console.log('📍 Direct $("Podcast Episodes"):', $("Podcast Episodes"));
-      console.log('📍 Direct $("Podcast Episodes").item:', $("Podcast Episodes")?.item);
-      console.log('📍 Direct $("Podcast Episodes").all():', $("Podcast Episodes")?.all());
-    } catch (e) {
-      console.log('❌ Direct Podcast Episodes access failed:', e.message);
-    }
-    
-    try {
-      console.log('📍 Direct $("Ingestion Sources"):', $("Ingestion Sources"));
-      console.log('📍 Direct $("Ingestion Sources").item:', $("Ingestion Sources")?.item);
-      console.log('📍 Direct $("Ingestion Sources").all():', $("Ingestion Sources")?.all());
-    } catch (e) {
-      console.log('❌ Direct Ingestion Sources access failed:', e.message);
-    }
+    // Node data is now provided via accessors - no need for direct $ access testing
     
     console.log(`Item ${$itemIndex} - Context injection data:`, {
       episodeTitle: podcastEpisodes?.title,
@@ -82,27 +72,50 @@ const result = processItems(
       throw new Error(`Missing episodeGuid from Podcast Episodes for item ${$itemIndex}. This is required for episode identification.`);
     }
 
-    // Prepare data for SQL insertion using the simplified utilities
-    const episodeData = {
-      KnowledgeSourceInstanceId: createRawSql('NEWID()'),
-      KnowledgeSourceId: sourceId,
-      Name: podcastEpisodes.title?.substring(0, 250) || null,
-      SourceDate: podcastEpisodes.publicationDate,
-      SourceUrl: podcastEpisodes.audioUrl?.substring(0, 2000) || null,
-      SourceId: podcastEpisodes.episodeGuid?.substring(0, 500) || null,
-      SourceDescription: podcastEpisodes.description || null,
-      SourceSummary: podcastEpisodes.summary || null,
-      SourceLink: podcastEpisodes.episodeLink?.substring(0, 4000) || null,
-      Duration: podcastEpisodes.duration || null,
-      FriendlyDuration: podcastEpisodes.durationFriendly?.substring(0, 50) || null,
-      Length: podcastEpisodes.audioFileSize || null,
-      FriendlyLength: podcastEpisodes.audioFileSizeFriendly?.substring(0, 50) || null,
-      SourceFileExtension: podcastEpisodes.fileExtension?.substring(0, 10) || null,
-      SourceMimeType: podcastEpisodes.audioFileType?.substring(0, 100) || null,
-      SourceFileName: podcastEpisodes.fileName?.substring(0, 255) || null,
-      SourceImageUrl: podcastEpisodes.episodeImage?.substring(0, 4000) || null,
-      Author: podcastEpisodes.author?.substring(0, 500) || null
+    // Define business normalization schema for podcast episodes
+    const episodeSchema = {
+      KnowledgeSourceId: COMMON_FIELD_CONFIGS.knowledgeSourceId,
+      Name: { ...COMMON_FIELD_CONFIGS.title, maxLength: 250 },
+      SourceDate: COMMON_FIELD_CONFIGS.publicationDate,
+      SourceUrl: { ...COMMON_FIELD_CONFIGS.sourceUrl, maxLength: 2000 },
+      SourceId: { ...COMMON_FIELD_CONFIGS.guid, maxLength: 500 },
+      SourceDescription: { ...COMMON_FIELD_CONFIGS.description, maxLength: 4000 },
+      SourceSummary: { ...COMMON_FIELD_CONFIGS.summary, maxLength: 2000 },
+      SourceLink: { ...COMMON_FIELD_CONFIGS.sourceLink, maxLength: 4000 },
+      Duration: COMMON_FIELD_CONFIGS.duration,
+      FriendlyDuration: { type: 'string', maxLength: 50, trimWhitespace: true },
+      Length: COMMON_FIELD_CONFIGS.fileSize,
+      FriendlyLength: { type: 'string', maxLength: 50, trimWhitespace: true },
+      SourceFileExtension: COMMON_FIELD_CONFIGS.fileExtension,
+      SourceMimeType: COMMON_FIELD_CONFIGS.mimeType,
+      SourceFileName: COMMON_FIELD_CONFIGS.fileName,
+      SourceImageUrl: { ...COMMON_FIELD_CONFIGS.imageUrl, maxLength: 4000 },
+      Author: COMMON_FIELD_CONFIGS.author
     };
+
+    // Prepare raw data for normalization
+    const rawEpisodeData = {
+      KnowledgeSourceId: sourceId,
+      Name: podcastEpisodes.title,
+      SourceDate: podcastEpisodes.publicationDate,
+      SourceUrl: podcastEpisodes.audioUrl,
+      SourceId: podcastEpisodes.episodeGuid,
+      SourceDescription: podcastEpisodes.description,
+      SourceSummary: podcastEpisodes.summary,
+      SourceLink: podcastEpisodes.episodeLink,
+      Duration: podcastEpisodes.duration,
+      FriendlyDuration: podcastEpisodes.durationFriendly,
+      Length: podcastEpisodes.audioFileSize,
+      FriendlyLength: podcastEpisodes.audioFileSizeFriendly,
+      SourceFileExtension: podcastEpisodes.fileExtension,
+      SourceMimeType: podcastEpisodes.audioFileType,
+      SourceFileName: podcastEpisodes.fileName,
+      SourceImageUrl: podcastEpisodes.episodeImage,
+      Author: podcastEpisodes.author
+    };
+
+    // Apply business normalization (handles nulls, truncation, HTML cleaning, etc.)
+    const episodeData = normalizeData(rawEpisodeData, episodeSchema);
     
     console.log(`Debug values for item ${$itemIndex}:`, {
       originalTitle: podcastEpisodes.title,
@@ -111,9 +124,12 @@ const result = processItems(
       fileSize: podcastEpisodes.audioFileSize
     });
 
-    // Generate SQL using the utility function
-    const query = generateInsertStatement('KnowledgeSourceInstances', episodeData, {
-      outputClause: 'OUTPUT INSERTED.KnowledgeSourceInstanceId'
+    // Generate SQL using the new architecture - pure SQL generation with normalized data
+    const query = generateInsert('KnowledgeSourceInstances', episodeData, {
+      outputClause: 'OUTPUT INSERTED.KnowledgeSourceInstanceId',
+      rawValues: {
+        KnowledgeSourceInstanceId: raw('NEWID()')
+      }
     });
 
     return {
@@ -150,7 +166,7 @@ const result = processItems(
       }
     };
   },
-  ['Podcast Episodes', 'Ingestion Sources'], // Node names to extract data from
+  nodeAccessors, // Node accessors that preserve itemMatching
   {
     logErrors: true,
     stopOnError: false

@@ -1,8 +1,13 @@
-// n8n Code Node: Generate Podcast Existence Check SQL (Batch Mode) - Updated Version
-// Now using the new accessor pattern to preserve itemMatching behavior
+// n8n Code Node: Generate Podcast Existence Check SQL (Batch Mode) - Clean Architecture
+// Uses new data normalization + pure SQL generation architecture
 // Handles multiple podcast episodes in "Run Once for All Items" mode
 
-const { processItemsWithAccessors, sanitizeForSQL } = require('sww-n8n-helpers');
+const { 
+  processItemsWithAccessors, 
+  normalizeData,
+  COMMON_FIELD_CONFIGS,
+  format
+} = require('sww-n8n-helpers');
 
 // Get all input items (podcast episodes)
 const podcastEpisodes = $input.all();
@@ -28,49 +33,75 @@ const result = await processItemsWithAccessors(
       throw new Error(`Missing both episodeGuid and title from Podcast Episodes for item ${itemIndex}`);
     }
 
-    // Build the existence check query for this episode using sanitizeForSQL utility
-    const escapedSourceId = sanitizeForSQL(ingestionSources.knowledgeSourceId);
-    const escapedGuid = sanitizeForSQL(json.episodeGuid);
-    const escapedTitle = sanitizeForSQL(json.title);
-    const escapedDate = sanitizeForSQL(json.publicationDate);
+    // Define normalization schema for the query parameters
+    const querySchema = {
+      knowledgeSourceId: COMMON_FIELD_CONFIGS.knowledgeSourceId,
+      episodeGuid: { ...COMMON_FIELD_CONFIGS.guid, required: false },
+      episodeTitle: { ...COMMON_FIELD_CONFIGS.title, required: false },
+      publicationDate: { ...COMMON_FIELD_CONFIGS.publicationDate, required: false }
+    };
 
-    const query = `
+    // Prepare raw data for normalization
+    const rawQueryData = {
+      knowledgeSourceId: ingestionSources.knowledgeSourceId,
+      episodeGuid: json.episodeGuid,
+      episodeTitle: json.title,
+      publicationDate: json.publicationDate
+    };
+
+    // Apply business normalization
+    const normalizedData = normalizeData(rawQueryData, querySchema);
+
+    // Build safe SQL query using SqlString.format with placeholders
+    const query = format(`
 SELECT CASE 
   WHEN EXISTS (
     SELECT KnowledgeSourceInstanceId 
     FROM KnowledgeSourceInstances 
-    WHERE KnowledgeSourceId = ${escapedSourceId}
-      AND SourceId = ${escapedGuid}
+    WHERE KnowledgeSourceId = ?
+      AND SourceId = ?
   )
   THEN 1
   WHEN EXISTS (
     SELECT KnowledgeSourceInstanceId 
     FROM KnowledgeSourceInstances 
-    WHERE Name = ${escapedTitle}
-      AND SourceDate = ${escapedDate}
-      AND KnowledgeSourceId = ${escapedSourceId}
+    WHERE Name = ?
+      AND SourceDate = ?
+      AND KnowledgeSourceId = ?
   )
   THEN 1
   ELSE 0
 END as episode_exists
-`;
+`, [
+      normalizedData.knowledgeSourceId,
+      normalizedData.episodeGuid,
+      normalizedData.episodeTitle,
+      normalizedData.publicationDate,
+      normalizedData.knowledgeSourceId
+    ]);
 
     return {
       query: query,
       parameters: {
-        knowledgeSourceId: ingestionSources.knowledgeSourceId,
-        episodeGuid: json.episodeGuid,
-        episodeTitle: json.title,
-        publicationDate: json.publicationDate
+        // Original values for reference
+        original: {
+          knowledgeSourceId: ingestionSources.knowledgeSourceId,
+          episodeGuid: json.episodeGuid,
+          episodeTitle: json.title,
+          publicationDate: json.publicationDate
+        },
+        // Normalized values actually used in query
+        normalized: normalizedData
       },
       metadata: {
         generatedAt: new Date().toISOString(),
         checkType: 'podcast_episode_existence',
-        primaryCheck: json.episodeGuid ? 'guid' : 'title_date',
-        hasGuid: !!json.episodeGuid,
-        hasTitle: !!json.title,
-        hasDate: !!json.publicationDate,
-        itemIndex: itemIndex
+        primaryCheck: normalizedData.episodeGuid ? 'guid' : 'title_date',
+        hasGuid: !!normalizedData.episodeGuid,
+        hasTitle: !!normalizedData.episodeTitle,
+        hasDate: !!normalizedData.publicationDate,
+        itemIndex: itemIndex,
+        architecture: 'data-transform + sql'
       }
     };
   },

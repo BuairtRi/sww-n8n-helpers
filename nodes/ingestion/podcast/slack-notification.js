@@ -1,27 +1,30 @@
-// Enhanced Slack Notification for New Podcast Episodes (Batch Mode)
-// This code node creates rich, informative Slack blocks using normalized episode data
-// Supports both single and batch processing modes
+// Enhanced Slack Notification for New Podcast Episodes (Batch Mode) - Clean Architecture
+// Creates rich, informative Slack blocks using normalized episode data
+// Uses new accessor pattern for reliable node data access
 
 const { 
-  processItemsWithN8N,
-  truncateWithSeparator,
+  processItemsWithAccessors,
+  normalizeData,
+  COMMON_FIELD_CONFIGS,
   createFallbackChain,
   validateAndExtractUrl,
-  generateExcerpt,
-  cleanHtml
+  generateExcerpt
 } = require('sww-n8n-helpers');
 
-// Helper function for safe text handling with Slack escaping
+// Helper function for safe text handling with Slack escaping and normalization
 function safeSlackText(text, maxLength = 150) {
   if (!text) return "N/A";
-  if (typeof text !== 'string') text = String(text);
   
-  // Clean HTML if present, then truncate with word boundaries
-  const cleaned = cleanHtml(text) || text;
-  const truncated = truncateWithSeparator(cleaned, maxLength, { omission: '...' });
+  // Normalize the text using our data transform utilities
+  const normalizedText = normalizeData(
+    { text: text }, 
+    { text: { type: 'string', cleanHtml: true, trimWhitespace: true, maxLength: maxLength } }
+  ).text;
+  
+  if (!normalizedText) return "N/A";
   
   // Basic escaping for special characters
-  return truncated
+  return normalizedText
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
@@ -70,30 +73,69 @@ function createActionButton(text, url, style = "primary") {
   };
 }
 
-// Create n8n batch processing helpers with bound $ function
-const { processItems } = processItemsWithN8N($);
-
 // Get all input items for batch processing
 const inputData = $input.all();
 
 console.log(`Processing ${inputData.length} episodes for Slack notifications`);
 
-// Process items with automatic context injection and node data extraction
-const result = await processItems(
+// Define node accessors that preserve itemMatching behavior
+const nodeAccessors = {
+  'Podcast Episodes': (itemIndex) => $('Podcast Episodes').itemMatching(itemIndex)?.json,
+  'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json
+};
+
+// Process items using clean architecture
+const result = await processItemsWithAccessors(
   inputData,
-  // Processor function receives: $item, $json, $itemIndex, podcastEpisode, podcastFeed
-  ($item, $json, $itemIndex, podcastEpisode, podcastFeed) => {
+  // Processor function receives: $item, $json, $itemIndex, podcastEpisode, ingestionSources (from accessors)
+  (_$item, $json, $itemIndex, podcastEpisode, ingestionSources) => {
     
     console.log(`Processing Slack notification for item ${$itemIndex}:`, {
       hasEpisodeData: !!podcastEpisode,
-      hasFeedData: !!podcastFeed,
+      hasIngestionSources: !!ingestionSources,
       episodeTitle: podcastEpisode?.title || 'Unknown',
+      podcastName: ingestionSources?.knowledgeSource?.name || 'Unknown',
       inputItemKeys: $json ? Object.keys($json) : 'no json'
     });
     
-    // Use episode data from context injection, fallback to input item
-    const episodeData = podcastEpisode || $json || {};
-    const podcastData = podcastFeed || {};
+    // Define normalization schema for Slack notification data
+    const slackDataSchema = {
+      // Episode fields
+      title: COMMON_FIELD_CONFIGS.title,
+      summary: { ...COMMON_FIELD_CONFIGS.summary, cleanHtml: true },
+      description: { ...COMMON_FIELD_CONFIGS.description, cleanHtml: true },
+      author: COMMON_FIELD_CONFIGS.author,
+      duration: COMMON_FIELD_CONFIGS.duration,
+      durationFriendly: { type: 'string', maxLength: 50, trimWhitespace: true },
+      publicationDate: COMMON_FIELD_CONFIGS.publicationDate,
+      publicationDateFriendly: { type: 'string', maxLength: 100, trimWhitespace: true },
+      episodeLink: COMMON_FIELD_CONFIGS.url,
+      audioUrl: COMMON_FIELD_CONFIGS.sourceUrl,
+      audioFileSize: COMMON_FIELD_CONFIGS.fileSize,
+      audioFileSizeFriendly: { type: 'string', maxLength: 50, trimWhitespace: true },
+      fileExtension: COMMON_FIELD_CONFIGS.fileExtension,
+      // Podcast fields
+      podcastName: { ...COMMON_FIELD_CONFIGS.name, maxLength: 200 },
+      // Optional fields
+      season: { type: 'integer', required: false },
+      episodeType: { type: 'string', maxLength: 50, trimWhitespace: true, required: false },
+      keywords: { type: 'string', maxLength: 500, trimWhitespace: true, required: false }
+    };
+
+    // Prepare raw data for normalization (combining episode and ingestion source data)
+    const rawSlackData = {
+      // Episode data (prefer from accessor, fallback to input)
+      ...(podcastEpisode || $json || {}),
+      // Podcast name from ingestion sources
+      podcastName: ingestionSources?.knowledgeSource?.name,
+    };
+
+    // Apply business normalization
+    const normalizedData = normalizeData(rawSlackData, slackDataSchema);
+    
+    // Use normalized data
+    const episodeData = normalizedData;
+    const podcastData = { Name: normalizedData.podcastName };
     
     // Check if this is an error item
     if (episodeData.$error || episodeData._error) {
@@ -277,6 +319,15 @@ const result = await processItems(
     return {
       "text": fallbackText,
       "blocks": blocks,
+      "parameters": {
+        // Original values for reference
+        "original": {
+          episodeData: podcastEpisode || {},
+          ingestionSources: ingestionSources || {}
+        },
+        // Normalized values actually used
+        "normalized": normalizedData
+      },
       "metadata": {
         "generatedAt": new Date().toISOString(),
         "notificationType": "podcast_episode",
@@ -284,11 +335,12 @@ const result = await processItems(
         "episodeTitle": episodeTitle,
         "podcastName": podcastName,
         "hasAudio": !!audioUrl,
-        "hasEpisodeLink": !!episodeLink
+        "hasEpisodeLink": !!episodeLink,
+        "architecture": "data-transform + accessors"
       }
     };
   },
-  ['Podcast Episodes', 'Podcast Feeds'], // Node names to extract data from
+  nodeAccessors, // Node accessors that preserve itemMatching
   {
     logErrors: true,
     stopOnError: false

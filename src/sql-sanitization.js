@@ -1,11 +1,16 @@
 // src/sql-sanitization.js
-// SQL sanitization utilities for safe database operations
-// Prevents SQL injection attacks and provides field-specific sanitization
-// Uses tsqlstring for T-SQL/MS SQL Server specific escaping
+// DEPRECATED: Legacy SQL utilities - use src/sql.js and src/data-transform.js instead
+// This module is maintained for backward compatibility only
+// 
+// Recommended migration:
+// - Use normalizeData() from data-transform.js for business logic
+// - Use generateInsert() from sql.js for SQL generation
 
 const _ = require('lodash');
-const SqlString = require('tsqlstring'); // peer dependency
+const SqlString = require('tsqlstring');
 const { createSQLSanitizationError } = require('./error');
+const { normalizeData, COMMON_FIELD_CONFIGS } = require('./data-transform');
+const { generateInsert, generateUpdate, escape, escapeId, format, raw } = require('./sql');
 
 /**
  * Simple field length limits for common database fields
@@ -41,6 +46,7 @@ const FIELD_LENGTH_LIMITS = {
 };
 
 /**
+ * @deprecated Use escape() from sql.js instead
  * Simple SQL value escaping using tsqlstring
  * @param {*} value - Value to escape for SQL
  * @param {Object} options - Escaping options
@@ -49,26 +55,9 @@ const FIELD_LENGTH_LIMITS = {
  */
 function escapeSqlValue(value, options = {}) {
   const { includeQuotes = true } = options;
-
-  // Handle objects with toSqlString method (raw SQL) - keep this for NEWID(), etc.
-  if (typeof value === 'object' && value !== null && typeof value.toSqlString === 'function') {
-    return value.toSqlString();
-  }
-
-  // Handle booleans (convert to 1/0 for SQL Server compatibility)
-  if (typeof value === 'boolean') {
-    return value ? '1' : '0';
-  }
-
-  // For everything else, defer to tsqlstring which handles:
-  // - null/undefined -> NULL
-  // - numbers -> unquoted numbers
-  // - strings -> properly escaped and quoted
-  // - dates -> ISO strings
-  // - arrays -> comma-separated values
-  // - buffers -> hex strings
-  const escaped = SqlString.escape(value);
   
+  // Delegate to new sql.js module
+  const escaped = escape(value);
   return includeQuotes ? escaped : escaped.slice(1, -1);
 }
 
@@ -77,10 +66,11 @@ function escapeSqlValue(value, options = {}) {
  * @param {*} text - Text to sanitize
  * @param {Object} options - Sanitization options
  * @param {number} options.maxLength - Maximum length (null for unlimited)
+ * @param {boolean} options.includeQuotes - Include surrounding quotes for SQL values (default: true)
  * @returns {string|null} Sanitized text or null if empty
  */
 function sanitizeForSQL(text, options = {}) {
-  const { maxLength = null } = options;
+  const { maxLength = null, includeQuotes = true } = options;
 
   // Handle null/undefined
   if (text === null || text === undefined) {
@@ -108,9 +98,9 @@ function sanitizeForSQL(text, options = {}) {
     text = text.substring(0, maxLength - 3) + '...';
   }
 
-  // Use tsqlstring for escaping, then remove outer quotes
+  // Use tsqlstring for escaping, preserve or remove quotes based on option
   const escaped = SqlString.escape(text);
-  return escaped.slice(1, -1);
+  return includeQuotes ? escaped : escaped.slice(1, -1);
 }
 
 /**
@@ -118,9 +108,10 @@ function sanitizeForSQL(text, options = {}) {
  * @param {*} text - Text to sanitize
  * @param {string} fieldName - Field name for length lookup
  * @param {number} maxLength - Maximum length override
+ * @param {Object} options - Additional options
  * @returns {string|null} Sanitized text
  */
-function sanitizeByFieldType(text, fieldName, maxLength = null) {
+function sanitizeByFieldType(text, fieldName, maxLength = null, options = {}) {
   if (!text) return null;
 
   // Determine max length from field name or override
@@ -136,7 +127,7 @@ function sanitizeByFieldType(text, fieldName, maxLength = null) {
     text = String(text).trim().toLowerCase().replace(/['";\s]/g, '');
   }
 
-  return sanitizeForSQL(text, { maxLength: effectiveMaxLength });
+  return sanitizeForSQL(text, { maxLength: effectiveMaxLength, ...options });
 }
 
 /**
@@ -372,6 +363,7 @@ function escapeSqlValuesBatch(values, options = {}) {
 }
 
 /**
+ * @deprecated Use generateInsert() from sql.js instead
  * Generate INSERT statement using SqlString.format with placeholders
  * @param {string} tableName - Table name
  * @param {Object|Array} data - Data to insert (object or array of objects)
@@ -381,49 +373,24 @@ function escapeSqlValuesBatch(values, options = {}) {
  * @returns {string} Generated INSERT statement
  */
 function generateInsertStatement(tableName, data, options = {}) {
-  if (!tableName || !data) {
-    throw new Error('Table name and data are required');
-  }
-
   const { outputClause = null, specialValues = {} } = options;
-
-  if (Array.isArray(data)) {
-    // Bulk insert - for now, process as multiple single inserts
-    // This could be optimized later to use bulk insert syntax
-    return data.map(row => generateInsertStatement(tableName, row, options)).join(';\n');
-  }
-
-  // Single row insert
-  const columns = Object.keys(data);
-  const values = [];
-  const placeholders = [];
-
-  columns.forEach(col => {
-    if (specialValues[col]) {
-      // Special values like NEWID() go directly in the SQL
-      placeholders.push(specialValues[col]);
-    } else {
-      // Regular values use placeholders
-      placeholders.push('?');
-      values.push(data[col]);
-    }
+  
+  // Convert specialValues to rawValues format for new API
+  const rawValues = {};
+  Object.keys(specialValues).forEach(key => {
+    rawValues[key] = raw(specialValues[key]);
   });
-
-  // Build the query with placeholders
-  let sql = `INSERT INTO ?? (??) `;
   
-  if (outputClause) {
-    sql += `${outputClause} `;
-  }
-  
-  sql += `VALUES (${placeholders.join(', ')})`;
-
-  // Use SqlString.format to safely substitute values
-  return SqlString.format(sql, [tableName, columns, ...values]);
+  // Delegate to new sql.js module
+  return generateInsert(tableName, data, { 
+    outputClause, 
+    rawValues 
+  });
 }
 
 
 /**
+ * @deprecated Use generateUpdate() from sql.js instead
  * Generate UPDATE statement with proper escaping
  * @param {string} tableName - Table name
  * @param {Object} data - Data to update
@@ -431,25 +398,12 @@ function generateInsertStatement(tableName, data, options = {}) {
  * @returns {string} Generated UPDATE statement
  */
 function generateUpdateStatement(tableName, data, whereClause) {
-  if (!tableName || !data || !whereClause) {
-    throw new Error('Table name, data, and where clause are required');
-  }
-
-  const escapedTable = escapeSqlIdentifier(tableName);
-
-  const setParts = Object.keys(data).map(key =>
-    `${escapeSqlIdentifier(key)} = ${escapeSqlValue(data[key])}`
-  );
-
-  const whereParts = Object.keys(whereClause).map(key =>
-    `${escapeSqlIdentifier(key)} = ${escapeSqlValue(whereClause[key])}`
-  );
-
-  return `UPDATE ${escapedTable} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`;
+  // Delegate to new sql.js module
+  return generateUpdate(tableName, data, whereClause);
 }
 
 module.exports = {
-  // Core sanitization functions
+  // Legacy sanitization functions (deprecated)
   sanitizeForSQL,
   sanitizeByFieldType,
   parseFieldList,
@@ -457,15 +411,25 @@ module.exports = {
   validateSanitizedText,
   sanitizeItemsBatch,
 
-  // Advanced tsqlstring-based functions
+  // Legacy tsqlstring-based functions (deprecated - use sql.js)
   escapeSqlValue,
-  escapeSqlIdentifier,
-  formatSqlQuery,
-  createRawSql,
+  escapeSqlIdentifier: escapeId,
+  formatSqlQuery: format,
+  createRawSql: raw,
   escapeSqlValuesBatch,
   generateInsertStatement,
   generateUpdateStatement,
   
-  // Simple field limits
-  FIELD_LENGTH_LIMITS
+  // Legacy field limits (deprecated - use COMMON_FIELD_CONFIGS from data-transform.js)
+  FIELD_LENGTH_LIMITS,
+  
+  // Re-export new modules for convenience
+  normalizeData,
+  COMMON_FIELD_CONFIGS,
+  escape,
+  escapeId,
+  format,
+  raw,
+  generateInsert,
+  generateUpdate
 }; 

@@ -1,43 +1,25 @@
-// n8n Code Node: Generate Knowledge Operations SQL (Batch Mode)
+// n8n Code Node: Generate Knowledge Operations SQL (Batch Mode) - Clean Architecture
 // Creates KnowledgeSourceInstanceOperations records for newly inserted podcast episodes
-// Runs after podcast episode insertion to link episodes with their processing operations
+// Uses new data normalization + pure SQL generation architecture
 
 const { 
-  processItemsWithN8N
+  processItemsWithAccessors,
+  normalizeData,
+  COMMON_FIELD_CONFIGS,
+  format,
+  raw
 } = require('sww-n8n-helpers');
-
-// Import tsqlstring directly for SQL value escaping
-let tsqlstring;
-try {
-  tsqlstring = require('tsqlstring');
-  console.log('✅ tsqlstring loaded successfully');
-} catch (error) {
-  console.error('❌ tsqlstring not available:', error.message);
-  // Fallback: simple manual escaping
-  tsqlstring = {
-    escape: (value) => {
-      if (value === null || value === undefined) return 'NULL';
-      if (typeof value === 'string') {
-        return "'" + value.replace(/'/g, "''") + "'";
-      }
-      return "'" + String(value) + "'";
-    }
-  };
-}
-
-// Create n8n batch processing helpers with bound $ function
-const { processItems } = processItemsWithN8N($);
 
 // Get all input items (should be the results from podcast insertion)
 const insertedEpisodes = $input.all();
 
 console.log(`Processing ${insertedEpisodes.length} inserted podcast episodes for knowledge operations`);
 
-// Process each inserted episode with automatic context injection
-const result = await processItems(
+// Process each inserted episode using clean architecture
+const result = await processItemsWithAccessors(
   insertedEpisodes,
-  // Processor function receives: $item, $json, $itemIndex
-  ($item, $json, $itemIndex) => {
+  // Processor function receives: $item, $json, $itemIndex (no additional node data needed)
+  (_$item, $json, $itemIndex) => {
     const insertResult = $json;
     
     // Validate required data - should have KnowledgeSourceInstanceId from the insertion
@@ -45,38 +27,55 @@ const result = await processItems(
       throw new Error(`Missing KnowledgeSourceInstanceId from insertion result for item ${$itemIndex}`);
     }
 
-    // Build the SQL query to create KnowledgeSourceInstanceOperations
-    const escapedInstanceId = tsqlstring.escape(insertResult.KnowledgeSourceInstanceId);
+    // Define normalization schema for the operation parameters
+    const operationSchema = {
+      knowledgeSourceInstanceId: COMMON_FIELD_CONFIGS.knowledgeSourceId // GUID
+    };
+
+    // Prepare raw data for normalization
+    const rawOperationData = {
+      knowledgeSourceInstanceId: insertResult.KnowledgeSourceInstanceId
+    };
+
+    // Apply business normalization
+    const normalizedData = normalizeData(rawOperationData, operationSchema);
     
     console.log(`Debug values for item ${$itemIndex}:`, {
       originalInstanceId: insertResult.KnowledgeSourceInstanceId,
-      escapedInstanceId
+      normalizedInstanceId: normalizedData.knowledgeSourceInstanceId
     });
 
-    const query = `
+    // Build safe SQL query using SqlString.format with placeholders
+    const query = format(`
 INSERT INTO KnowledgeSourceInstanceOperations
 (KnowledgeSourceInstanceOperationId, KnowledgeSourceOperationId, KnowledgeSourceInstanceId)
 SELECT NEWID(), kso.[KnowledgeSourceOperationId], ksi.KnowledgeSourceInstanceId
 FROM KnowledgeSources ks
 INNER JOIN KnowledgeSourceOperations kso ON kso.KnowledgeSourceId = ks.KnowledgeSourceId
 INNER JOIN KnowledgeSourceInstances ksi ON ksi.KnowledgeSourceId = ks.KnowledgeSourceId
-WHERE ksi.KnowledgeSourceInstanceId = ${escapedInstanceId}
-`;
+WHERE ksi.KnowledgeSourceInstanceId = ?
+`, [normalizedData.knowledgeSourceInstanceId]);
 
     return {
       query: query,
       parameters: {
-        knowledgeSourceInstanceId: insertResult.KnowledgeSourceInstanceId
+        // Original values for reference
+        original: {
+          knowledgeSourceInstanceId: insertResult.KnowledgeSourceInstanceId
+        },
+        // Normalized values actually used in query
+        normalized: normalizedData
       },
       metadata: {
         generatedAt: new Date().toISOString(),
         queryType: 'knowledge_source_instance_operations_creation',
         itemIndex: $itemIndex,
-        hasInstanceId: !!insertResult.KnowledgeSourceInstanceId
+        hasInstanceId: !!normalizedData.knowledgeSourceInstanceId,
+        architecture: 'data-transform + sql'
       }
     };
   },
-  [], // No additional nodes needed
+  {}, // No additional node accessors needed
   {
     logErrors: true,
     stopOnError: false
