@@ -1,0 +1,142 @@
+{
+  "name": "Gmail Labels",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "label",
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "08121702-3e5f-4ac2-94dc-bb1ee3d2f250",
+      "name": "Get many labels",
+      "webhookId": "f1a67e8e-2dee-4f67-82ba-f2a3945cee9d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IgX5NLiymOSeBvnY",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "d0f24128-f7e5-447f-a49c-69e4113d47f7",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "524beb8a-0bb4-400f-a458-235b9c94468b",
+      "name": "Webhook",
+      "webhookId": "d0f24128-f7e5-447f-a49c-69e4113d47f7",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "7thrzSCdTVKutunh",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e293785f-99ae-4245-8c99-89bdae149a74",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "user",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "83877a2b-9854-4437-b570-b0ebb4e264b3",
+      "name": "Filter"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -240
+      ],
+      "id": "d0fb820b-8207-4415-ad59-6641b1c923d9",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get many labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many labels": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get many labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "df02263e-18ac-40e3-98f8-ef408b3d24af",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "7PxBOeOiU1RVMa0N",
+  "tags": []
+}

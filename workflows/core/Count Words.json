@@ -1,0 +1,61 @@
+{
+  "name": "Count Words",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "text"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1db2846a-9d98-41b2-816d-043b8b1ea922",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Word Count Utility\n// Modular function for counting meaningful words in text\n\n/**\n * Counts total words excluding pure special character strings\n * @param {string} text - The text to count words in\n * @returns {number} - The count of meaningful words\n */\nfunction countTotalWords(text) {\n  // Handle null, undefined, or non-string inputs\n  if (!text || typeof text !== 'string') return 0;\n  \n  // Split by whitespace and common punctuation\n  const words = text.split(/\\s+|[,;.!?()[\\]{}\"|]/);\n  \n  // Count valid words\n  let wordCount = 0;\n  \n  for (const word of words) {\n    // Clean the word (trim whitespace)\n    const cleanWord = word.trim();\n    \n    // Skip empty strings\n    if (!cleanWord) continue;\n    \n    // Check if the word contains only special characters\n    // This regex matches if the string contains ONLY non-alphanumeric characters\n    const isPureSpecialChars = /^[^a-zA-Z0-9]+$/.test(cleanWord);\n    \n    // If it's not pure special characters, count it\n    if (!isPureSpecialChars) {\n      wordCount++;\n    }\n  }\n  \n  return wordCount;\n}\n\n// Example usage in n8n workflow:\nconst items = $input.all();\nconst outputItems = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  \n  try {\n    // Extract text content\n    const textContent = item.json.text || item.json.content || item.json.description || '';\n    \n    // Calculate word count\n    const wordCount = countTotalWords(textContent);\n    \n    // Add word count to the output\n    const enrichedItem = {\n      ...item.json,\n      wordCount: wordCount,\n      hasContent: wordCount > 0,\n      // Add word count metadata\n      wordCountMetadata: {\n        originalLength: textContent.length,\n        wordCount: wordCount,\n        averageWordLength: wordCount > 0 ? Math.round(textContent.length / wordCount) : 0,\n        calculatedAt: new Date().toISOString()\n      }\n    };\n    \n    outputItems.push({\n      json: enrichedItem,\n      pairedItem: i\n    });\n    \n  } catch (error) {\n    // Graceful error handling - maintain pairing\n    outputItems.push({\n      json: {\n        ...item.json,\n        wordCount: 0,\n        _error: {\n          type: 'word_count_error',\n          message: error.message,\n          originalData: { id: item.json.id || null }\n        }\n      },\n      pairedItem: i\n    });\n  }\n}\n\nconsole.log(`Processed ${items.length} items, calculated word counts`);\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "56a9814f-20ff-40ba-bd93-417d7aa33325",
+      "name": "Count Words"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Count Words",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "868db18b-f437-4ccf-98a9-62ef30d296ed",
+  "meta": {
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "2sDD1sGNFR3oE1CE",
+  "tags": []
+}

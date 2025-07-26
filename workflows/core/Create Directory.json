@@ -1,0 +1,53 @@
+{
+  "name": "Create Directory",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "bcb8fa98-2377-45d7-9380-05a914cfc067",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "command": "mkdir \"/n8n_data/batch_files\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "d0534401-8520-47f7-93c6-d4983ac98397",
+      "name": "Execute Command"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Execute Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2d3c145e-ba08-46fa-9f58-e9ecb538b4d5",
+  "meta": {
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "Hp6Rf1TPpfKBxvQZ",
+  "tags": []
+}

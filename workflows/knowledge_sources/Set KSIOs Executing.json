@@ -1,0 +1,114 @@
+{
+  "name": "Set KSIOs Executing",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "KnowledgeSourceOperationId"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8b5cb742-5e26-4747-81c7-b2b7f287bcf9",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ba125533-22f5-4d48-8d7c-6cad56c2e495",
+              "leftValue": "={{ $json.KnowledgeSourceOperationId === null || $json.KnowledgeSourceOperationId === undefined || $json.KnowledgeSourceOperationId === '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "b92dcfc0-79d3-48c0-922e-6c286b09dfa0",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE KnowledgeSourceInstanceOperations\n  SET Executing = 1,\n      ExecutionStart = GETUTCDATE()\nWHERE KnowledgeSourceInstanceOperationId = '{{ $json.KnowledgeSourceOperationId }}'"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "3cbf11e9-f421-4a27-814d-d515b8dcbe55",
+      "name": "Set Execution",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Set Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "99178c28-3c3d-4b3c-9d04-63c9352f858b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "PUiVHrS18He1fHVx",
+  "tags": []
+}

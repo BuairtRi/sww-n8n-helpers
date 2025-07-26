@@ -1,0 +1,69 @@
+{
+  "name": "Validate Incoming Webhook Data",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "data",
+              "type": "object"
+            },
+            {
+              "name": "requiredFields"
+            },
+            {
+              "name": "fieldRules",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6c629878-7795-4b9d-880e-5d8971423756",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Enhanced HTTP Request Validator using SWW Helpers\nconst { \n  processItemsWithPairing,\n  validation,\n  text,\n  createProcessingError \n} = require('sww-n8n-helpers');\n\n// Configuration extraction with validation\nfunction getConfig(input) {\n  const config = {\n    requiredFields: input.requiredFields || '',\n    fieldRules: input.fieldRules || {},\n    extractFromBody: input.extractFromBody !== false,\n    maxStringLength: input.maxStringLength || 2000,\n    trimStrings: input.trimStrings !== false,\n    strictMode: input.strictMode || false,\n    removeNulls: input.removeNulls || false\n  };\n  \n  // Validate configuration\n  if (config.requiredFields && typeof config.requiredFields !== 'string') {\n    throw new Error('requiredFields must be a comma-delimited string');\n  }\n  \n  if (config.fieldRules && typeof config.fieldRules !== 'object') {\n    throw new Error('fieldRules must be an object');\n  }\n  \n  return config;\n}\n\n// Enhanced field validation using SWW helpers\nfunction validateField(fieldName, value, rule) {\n  const errors = [];\n  \n  // Skip validation if value is null/undefined and field is not required\n  if ((value === null || value === undefined || value === '') && !rule.required) {\n    return errors;\n  }\n  \n  // Required field check\n  if (rule.required && (value === null || value === undefined || value === '')) {\n    errors.push(`${fieldName} is required`);\n    return errors;\n  }\n  \n  // Type-specific validation using SWW helpers\n  switch (rule.type) {\n    case 'string':\n      if (typeof value !== 'string') {\n        errors.push(`${fieldName} must be a string`);\n      } else {\n        if (rule.maxLength && value.length > rule.maxLength) {\n          errors.push(`${fieldName} must be no more than ${rule.maxLength} characters`);\n        }\n        if (rule.minLength && value.length < rule.minLength) {\n          errors.push(`${fieldName} must be at least ${rule.minLength} characters`);\n        }\n      }\n      break;\n      \n    case 'number':\n      const numResult = validation.validateNumericRange(value, {\n        min: rule.min,\n        max: rule.max,\n        integer: false\n      });\n      if (numResult === null) {\n        errors.push(`${fieldName} must be a valid number${rule.min !== undefined ? ` (min: ${rule.min})` : ''}${rule.max !== undefined ? ` (max: ${rule.max})` : ''}`);\n      }\n      break;\n      \n    case 'integer':\n      const intResult = validation.validateNumericRange(value, {\n        min: rule.min,\n        max: rule.max,\n        integer: true\n      });\n      if (intResult === null) {\n        errors.push(`${fieldName} must be a valid integer${rule.min !== undefined ? ` (min: ${rule.min})` : ''}${rule.max !== undefined ? ` (max: ${rule.max})` : ''}`);\n      }\n      break;\n      \n    case 'boolean':\n      if (typeof value !== 'boolean' && !['true', 'false', '1', '0'].includes(String(value).toLowerCase())) {\n        errors.push(`${fieldName} must be a boolean value`);\n      }\n      break;\n      \n    case 'date':\n      const dateResult = validation.validateAndFormatDate(value);\n      if (dateResult === null) {\n        errors.push(`${fieldName} must be a valid date format`);\n      }\n      break;\n      \n    case 'guid':\n      // Enhanced GUID validation\n      if (!validation.isValidGuid || !validation.isValidGuid(value)) {\n        const guidRegex = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i;\n        if (!guidRegex.test(String(value))) {\n          errors.push(`${fieldName} must be a valid GUID format`);\n        }\n      }\n      break;\n      \n    case 'url':\n      const urlResult = validation.validateAndExtractUrl(value, rule.allowedProtocols);\n      if (urlResult === null) {\n        errors.push(`${fieldName} must be a valid URL format`);\n      }\n      break;\n      \n    case 'email':\n      if (!validation.validateEmail(value, { allowDisplayName: rule.allowDisplayName })) {\n        errors.push(`${fieldName} must be a valid email format`);\n      }\n      break;\n      \n    case 'phone':\n      const phoneResult = validation.validatePhone(value, rule.locale || 'any');\n      if (phoneResult === null) {\n        errors.push(`${fieldName} must be a valid phone number format`);\n      }\n      break;\n      \n    case 'array':\n      if (!Array.isArray(value)) {\n        errors.push(`${fieldName} must be an array`);\n      } else {\n        const arrayValid = validation.validateArray(value, {\n          minLength: rule.minLength,\n          maxLength: rule.maxLength,\n          elementValidator: rule.elementValidator\n        });\n        if (!arrayValid) {\n          errors.push(`${fieldName} array validation failed`);\n        }\n      }\n      break;\n  }\n  \n  return errors;\n}\n\n// Enhanced field processing using SWW helpers\nfunction processField(fieldName, value, rule, config) {\n  if (value === null || value === undefined) return value;\n  \n  try {\n    switch (rule.type) {\n      case 'string':\n        let stringValue = String(value);\n        \n        // Use text processing utilities\n        if (rule.cleanHtml) {\n          stringValue = text.cleanHtml(stringValue);\n        }\n        \n        if (rule.stripMarkdown) {\n          stringValue = text.stripMarkdown(stringValue);\n        }\n        \n        if (rule.normalize) {\n          stringValue = text.normalizeText(stringValue);\n        }\n        \n        if (config.trimStrings) {\n          stringValue = stringValue.trim();\n        }\n        \n        if (rule.maxLength && stringValue.length > rule.maxLength) {\n          stringValue = text.truncateWithSeparator(stringValue, rule.maxLength, {\n            omission: rule.truncateOmission || '...'\n          });\n        }\n        \n        return stringValue;\n        \n      case 'number':\n        return validation.validateNumericRange(value, { integer: false });\n        \n      case 'integer':\n        return validation.validateNumericRange(value, { integer: true });\n        \n      case 'boolean':\n        if (typeof value === 'string') {\n          return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());\n        }\n        return Boolean(value);\n        \n      case 'date':\n        return validation.validateAndFormatDate(value);\n        \n      case 'url':\n        return validation.validateAndExtractUrl(value, rule.allowedProtocols);\n        \n      case 'email':\n        const email = validation.validateEmail(value) ? String(value).toLowerCase().trim() : value;\n        return email;\n        \n      case 'phone':\n        return validation.validatePhone(value, rule.locale || 'any');\n        \n      case 'guid':\n        // Normalize GUID format\n        if (typeof value === 'string') {\n          return value.toLowerCase().replace(/[^0-9a-f-]/g, '');\n        }\n        return value;\n        \n      default:\n        return config.trimStrings && typeof value === 'string' ? value.trim() : value;\n    }\n  } catch (error) {\n    console.warn(`Field processing warning for ${fieldName}:`, error.message);\n    return value; // Return original value if processing fails\n  }\n}\n\n// Main processing function\nfunction validateItem(item, index) {\n  const input = item.json;\n  \n  try {\n    // Extract and validate configuration\n    const config = getConfig(input);\n    \n    // Get the actual data to validate\n    const dataToValidate = config.extractFromBody ? (input.data || input.body || {}) : input;\n    \n    // Parse required fields\n    const requiredFieldsList = config.requiredFields ? \n      config.requiredFields.split(',').map(field => field.trim()).filter(field => field) : \n      [];\n    \n    const fieldRules = config.fieldRules || {};\n    \n    // Use validation helper for required fields check\n    const requiredValidation = validation.validateRequiredFields(dataToValidate, requiredFieldsList);\n    \n    const errors = [];\n    const warnings = [];\n    const processedData = {};\n    \n    // Add required field errors\n    if (!requiredValidation.isValid) {\n      requiredValidation.missingFields.forEach(field => {\n        errors.push(`Missing required field: ${field}`);\n      });\n    }\n    \n    // Validate and process all fields\n    Object.keys(dataToValidate).forEach(fieldName => {\n      const value = dataToValidate[fieldName];\n      const rule = fieldRules[fieldName] || {};\n      \n      // Skip internal fields\n      if (fieldName.startsWith('_')) {\n        processedData[fieldName] = value;\n        return;\n      }\n      \n      try {\n        // Validate the field\n        const fieldErrors = validateField(fieldName, value, rule);\n        errors.push(...fieldErrors);\n        \n        // Process/transform the field if no errors\n        if (fieldErrors.length === 0) {\n          processedData[fieldName] = processField(fieldName, value, rule, config);\n        } else {\n          // Keep original value if validation failed\n          processedData[fieldName] = value;\n        }\n        \n      } catch (fieldError) {\n        errors.push(`Field processing error for ${fieldName}: ${fieldError.message}`);\n        processedData[fieldName] = value;\n      }\n    });\n    \n    // Check for unknown fields in strict mode\n    if (config.strictMode) {\n      Object.keys(dataToValidate).forEach(fieldName => {\n        if (!fieldRules[fieldName] && !fieldName.startsWith('_')) {\n          warnings.push(`Unknown field: ${fieldName}`);\n        }\n      });\n    }\n    \n    // Clean object if configured\n    let finalData = processedData;\n    if (config.removeNulls) {\n      finalData = validation.cleanObject(processedData, { \n        removeNull: true, \n        removeUndefined: true, \n        removeEmptyStrings: true \n      });\n    }\n    \n    // Build response\n    const response = {\n      valid: errors.length === 0,\n      data: finalData,\n      validation: {\n        requiredFieldsChecked: requiredFieldsList.length,\n        rulesApplied: Object.keys(fieldRules).filter(key => !key.startsWith('_')).length,\n        processingTimestamp: new Date().toISOString(),\n        itemIndex: index\n      }\n    };\n    \n    // Add errors if any\n    if (errors.length > 0) {\n      response.errors = errors;\n      response.receivedData = dataToValidate;\n    }\n    \n    // Add warnings if any\n    if (warnings.length > 0) {\n      response.warnings = warnings;\n    }\n    \n    return response;\n    \n  } catch (error) {\n    // Use helper to create standardized error\n    return createProcessingError('validation_error', error.message, {\n      itemIndex: index,\n      receivedData: input\n    });\n  }\n}\n\n// Process all items using batch processing helper\nconst results = processItemsWithPairing($input.all(), validateItem, {\n  maintainPairing: true,\n  logErrors: true,\n  stopOnError: false\n});\n\n// Generate processing statistics\nconst validItems = results.filter(item => item.json.valid === true);\nconst invalidItems = results.filter(item => item.json.valid === false);\n\nconsole.log(`Validation complete. Processed ${results.length} items.`);\nconsole.log(`Valid items: ${validItems.length}`);\nconsole.log(`Invalid items: ${invalidItems.length}`);\n\nif (invalidItems.length > 0) {\n  console.log('Validation errors summary:');\n  invalidItems.forEach((item, idx) => {\n    const errors = item.json.errors || ['Unknown error'];\n    console.log(`  Item ${item.pairedItem}: ${errors.slice(0, 2).join(', ')}${errors.length > 2 ? '...' : ''}`);\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "0115e8bb-14f1-4e2c-aad7-1f524c34b832",
+      "name": "Code"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "894bd7ee-0c05-42e5-9e9c-0bb74843f2d5",
+  "meta": {
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "ZlsoVWHIsWDDuKgx",
+  "tags": []
+}

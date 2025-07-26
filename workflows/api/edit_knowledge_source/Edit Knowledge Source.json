@@ -1,0 +1,291 @@
+{
+  "name": "Edit Knowledge Source",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f67ae114-49c9-4dfe-a2be-d0b3641fda68",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4baaddee-596e-44c2-bebc-a629039015b3",
+      "name": "Webhook",
+      "webhookId": "f67ae114-49c9-4dfe-a2be-d0b3641fda68"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1136,
+        -144
+      ],
+      "id": "f1e2c700-1434-4276-96e2-63e8b48bd916",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d958783d-6143-457a-93b1-f6a133fc2514",
+              "leftValue": "={{ $('Input').item.json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "e20b2d4e-921e-49df-9250-d0ca738a5973",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Knowledge Source Validation and Mapping\nconst inputItems = $input.all();\nconst outputItems = [];\n\n// Helper function to safely parse dates\nfunction parseDate(dateStr) {\n  if (!dateStr) return null;\n  \n  const date = new Date(dateStr);\n  if (isNaN(date.getTime())) {\n    throw new Error(`Invalid date format: ${dateStr}`);\n  }\n  \n  // Return ISO string for SQL Server compatibility\n  return date.toISOString();\n}\n\n// Helper function to validate GUID format (with or without hyphens)\nfunction isValidGuid(guid) {\n  if (!guid || typeof guid !== 'string') return false;\n  \n  // Remove hyphens and check if it's 32 hex characters\n  const cleanGuid = guid.replace(/-/g, '');\n  const guidRegex = /^[0-9a-f]{32}$/i;\n  return guidRegex.test(cleanGuid);\n}\n\n// Helper function to validate URL format using regex\nfunction isValidUrl(url) {\n  if (!url || typeof url !== 'string') return false;\n  \n  // Comprehensive URL regex pattern\n  const urlRegex = /^https?:\\/\\/(?:[-\\w.])+(?::[0-9]+)?(?:\\/(?:[\\w\\/_.])*)?(?:\\?(?:[\\w&=%.])*)?(?:#(?:[\\w.])*)?$/i;\n  return urlRegex.test(url);\n}\n\n// Process each input item\nfor (let i = 0; i < inputItems.length; i++) {\n  const item = inputItems[i];\n  let input = item.json;\n\n  if (input['body']) {\n    input = input.body;\n  }\n  \n  try {\n    const errors = [];\n    const warnings = [];\n    \n    // Required field validation\n    const requiredFields = [\n      'KnowledgeSourceId',\n      'Name', \n      'KnowledgeSourceTypeId',\n      'Active',\n      'Detect',\n      'LastDetectDate',\n      'NextDetectDate'\n    ];\n    \n    // Check for missing required fields\n    requiredFields.forEach(field => {\n      if (input[field] === undefined || input[field] === null || input[field] === '') {\n        errors.push(`Missing required field: ${field}`);\n      }\n    });\n    \n    // Validate either SourceId or Url is present\n    if (!input.SourceId && !input.Url) {\n      errors.push('Either SourceId or Url must be provided');\n    }\n    \n    // Type and format validation\n    if (input.KnowledgeSourceId && !isValidGuid(input.KnowledgeSourceId)) {\n      errors.push('KnowledgeSourceId must be a valid GUID format');\n    }\n    \n    if (input.Name && (typeof input.Name !== 'string' || input.Name.length > 50)) {\n      errors.push('Name must be a string with maximum 50 characters');\n    }\n    \n    if (input.KnowledgeSourceTypeId && (!Number.isInteger(input.KnowledgeSourceTypeId) || input.KnowledgeSourceTypeId < 1)) {\n      errors.push('KnowledgeSourceTypeId must be a positive integer');\n    }\n    \n    if (input.Active !== undefined && typeof input.Active !== 'boolean') {\n      errors.push('Active must be a boolean value');\n    }\n    \n    if (input.Detect !== undefined && typeof input.Detect !== 'boolean') {\n      errors.push('Detect must be a boolean value');\n    }\n    \n    if (input.Url && !isValidUrl(input.Url)) {\n      errors.push('Url must be a valid URL format');\n    }\n    \n    if (input.DetectInterval && (!Number.isInteger(input.DetectInterval) || input.DetectInterval < 1)) {\n      errors.push('DetectInterval must be a positive integer (minutes)');\n    }\n    \n    // Date validation\n    let lastDetectDate = null;\n    let nextDetectDate = null;\n    \n    try {\n      if (input.LastDetectDate) {\n        lastDetectDate = parseDate(input.LastDetectDate);\n      }\n    } catch (error) {\n      errors.push(`LastDetectDate: ${error.message}`);\n    }\n    \n    try {\n      if (input.NextDetectDate) {\n        nextDetectDate = parseDate(input.NextDetectDate);\n      }\n    } catch (error) {\n      errors.push(`NextDetectDate: ${error.message}`);\n    }\n    \n    // Logical validation\n    if (lastDetectDate && nextDetectDate && new Date(lastDetectDate) >= new Date(nextDetectDate)) {\n      warnings.push('NextDetectDate should be after LastDetectDate');\n    }\n    \n    // If validation failed, return error response\n    if (errors.length > 0) {\n      outputItems.push({\n        json: {\n          valid: false,\n          errors: errors,\n          warnings: warnings,\n          receivedData: input\n        },\n        pairedItem: i\n      });\n      continue;\n    }\n    \n    // Map and clean the data for SQL insertion\n    const mappedData = {\n      KnowledgeSourceId: input.KnowledgeSourceId,\n      Name: input.Name?.trim(),\n      KnowledgeSourceTypeId: input.KnowledgeSourceTypeId,\n      Url: input.Url?.trim() || null,\n      SourceId: input.SourceId?.trim() || null,\n      Active: input.Active,\n      Detect: input.Detect,\n      DetectInterval: input.DetectInterval || null,\n      LastDetectDate: lastDetectDate,\n      NextDetectDate: nextDetectDate\n    };\n    \n    // Remove any null/undefined values to avoid SQL issues\n    Object.keys(mappedData).forEach(key => {\n      if (mappedData[key] === undefined) {\n        delete mappedData[key];\n      }\n    });\n    \n    // Return successful validation\n    const response = {\n      valid: true,\n      data: mappedData\n    };\n    \n    // Include warnings if any\n    if (warnings.length > 0) {\n      response.warnings = warnings;\n    }\n    \n    outputItems.push({\n      json: response,\n      pairedItem: i\n    });\n    \n  } catch (error) {\n    // Handle unexpected errors\n    outputItems.push({\n      json: {\n        valid: false,\n        errors: [`Validation error: ${error.message}`],\n        receivedData: input\n      },\n      pairedItem: i\n    });\n  }\n}\n\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "c02b2772-14a4-418b-bf89-ca4fb791e06f",
+      "name": "Input"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        800,
+        160
+      ],
+      "id": "090ecf31-8249-42a4-b54b-f0d579fed938",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "y86pKNKlGOW4vM97",
+          "mode": "list",
+          "cachedResultName": "Sanitize"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "objectToSanitize": "={{ $json.data }}",
+            "fieldsToSanitize": "Name,Url,SourceId"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "textToSanitize",
+              "displayName": "textToSanitize",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": true
+            },
+            {
+              "id": "fieldType",
+              "displayName": "fieldType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": true
+            },
+            {
+              "id": "maxLength",
+              "displayName": "maxLength",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": true
+            },
+            {
+              "id": "objectToSanitize",
+              "displayName": "objectToSanitize",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "fieldsToSanitize",
+              "displayName": "fieldsToSanitize",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        -144
+      ],
+      "id": "774c4ebe-e286-44a0-8aac-7c35bab5039c",
+      "name": "Sanitize"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE KnowledgeSources\n  SET Name = '{{ $('Sanitize').item.json.NameSanitized }}',\n      KnowledgeSourceTypeId = {{ $('Input').item.json.data.KnowledgeSourceTypeId }},\n      URL = '{{ $('Sanitize').item.json.UrlSanitized }}',\n      Active = {{ $('Input').item.json.data.Active ? 1 : 0 }},\n      SourceId = {{ $('Sanitize').item.json.SourceIdSanitized ? '\\'' + $('Sanitize').item.json.UrlSanitized + '\\'' : 'NULL'  }},\n      DetectInterval = {{ $('Input').item.json.data.DetectInterval }},\n      LastDetectDate = '{{ $('Input').item.json.data.LastDetectDate }}',\n      NextDetectDate = '{{ $('Input').item.json.data.NextDetectDate }}',\n      Detect = {{ $('Input').item.json.data.Detect ? 1 : 0 }}\nWHERE KnowledgeSourceId = '{{ $('Input').item.json.data.KnowledgeSourceId }}'"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        -144
+      ],
+      "id": "f748011c-0c7b-43ab-a403-24af130d94f6",
+      "name": "Update Knowledge Source",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "Active": true,
+          "KnowledgeSourceId": "F3B39C88-9366-46DC-A1E6-5CB34F6A058E",
+          "NextDetectDate": "2025-07-24 08:00",
+          "LastDetectDate": "2025-07-24 04:00",
+          "KnowledgeSourceTypeId": 1,
+          "KnowledgeSourceTypeName": "Podcast",
+          "Detect": true,
+          "Url": "https://slateprivate.supportingcast.fm/content/eyJ0IjoicCIsImMiOiIzMDMiLCJ1IjoiNjkyOTYiLCJkIjoiMTU4NTA2ODM4MyIsImsiOjg1fXxhNTQzZDRjMDgwY2M5ZGUwMjVmOWU5ZDZlYmNmYWQ4ZTc5ODNiYjFiMDQyMGMwOWU2YTVhZTg3M2I5NDExMTFj.rss",
+          "Name": "Amicus",
+          "DetectInterval": 240
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Sanitize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitize": {
+      "main": [
+        [
+          {
+            "node": "Update Knowledge Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Knowledge Source": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "0383ef3e-c188-4321-847c-ca16fce9abe7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "UdkF5bEjr9xQdAC7",
+  "tags": []
+}

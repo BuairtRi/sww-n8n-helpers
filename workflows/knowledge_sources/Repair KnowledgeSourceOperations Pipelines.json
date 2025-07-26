@@ -1,0 +1,167 @@
+{
+  "name": "Repair KnowledgeSourceOperations Pipelines",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2e2eb34f-9750-4ad5-b4e5-6930275d3adf",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    ks.KnowledgeSourceId,\n    ks.Name AS SourceName,\n    ko.KnowledgeOperationId,\n    ko.Name AS OperationName,\n    ko.KnowledgeOperationTypeId,\n    kot.Name AS OperationType,\n    ks.PipelineId,\n    p.Name AS PipelineName\nFROM KnowledgeSources ks\nINNER JOIN Pipelines p ON ks.PipelineId = p.PipelineId\nINNER JOIN KnowledgeOperations ko ON ko.PipelineId = ks.PipelineId\nINNER JOIN KnowledgeOperationTypes kot ON ko.KnowledgeOperationTypeId = kot.KnowledgeOperationTypeId\nWHERE NOT EXISTS (\n    SELECT 1 \n    FROM KnowledgeSourceOperations kso \n    WHERE kso.KnowledgeSourceId = ks.KnowledgeSourceId \n    AND kso.KnowledgeOperationId = ko.KnowledgeOperationId\n)\nAND ks.Active = 1  -- Only process active sources\nORDER BY ks.Name, ko.Name;"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        656,
+        -144
+      ],
+      "id": "05f66aa6-3bb4-4d88-9656-074024523417",
+      "name": "Records To Insert",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT TOP 1 COUNT(*) AS RecordsToInsert\nFROM KnowledgeSources ks\nINNER JOIN KnowledgeOperations ko ON ko.PipelineId = ks.PipelineId\nWHERE NOT EXISTS (\n    SELECT 1 \n    FROM KnowledgeSourceOperations kso \n    WHERE kso.KnowledgeSourceId = ks.KnowledgeSourceId \n    AND kso.KnowledgeOperationId = ko.KnowledgeOperationId\n)\nAND ks.Active = 1;"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "d2a27e26-d223-4043-a7d3-d99a7e879e7e",
+      "name": "Count Inserts",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3e2ba5e5-87e0-40f4-8287-df12fc395007",
+              "leftValue": "={{ $json.RecordsToInsert }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "88bd20f6-6564-4f6d-aa3d-27ed03c182fb",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO KnowledgeSourceOperations (\n    KnowledgeSourceOperationId,\n    KnowledgeSourceId,\n    KnowledgeOperationId,\n    Name,\n    Interval,\n    LastExecuted,\n    NextExecution\n)\nSELECT \n    NEWID() AS KnowledgeSourceOperationId,\n    ks.KnowledgeSourceId,\n    ko.KnowledgeOperationId,\n    ko.Name AS Name,  -- Duplicate the name from KnowledgeOperations\n    NULL AS Interval,  -- Default to NULL\n    NULL AS LastExecuted,\n    NULL AS NextExecution  -- Default to NULL\nFROM KnowledgeSources ks\nINNER JOIN KnowledgeOperations ko ON ko.PipelineId = ks.PipelineId\nWHERE NOT EXISTS (\n    SELECT 1 \n    FROM KnowledgeSourceOperations kso \n    WHERE kso.KnowledgeSourceId = ks.KnowledgeSourceId \n    AND kso.KnowledgeOperationId = ko.KnowledgeOperationId\n)\nAND ks.Active = 1;  -- Only process active sources"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        864,
+        -144
+      ],
+      "id": "52691440-e6ca-40e0-80ec-5b0fce77201c",
+      "name": "Insert Records",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Count Inserts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Inserts": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Records To Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Records To Insert": {
+      "main": [
+        [
+          {
+            "node": "Insert Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5b6f6c82-4f9e-4731-96fa-1488ffe22aa3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "RmnNEBlWIj499p88",
+  "tags": []
+}

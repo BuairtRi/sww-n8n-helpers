@@ -1,0 +1,163 @@
+{
+  "name": "Set Text",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "y86pKNKlGOW4vM97",
+          "mode": "list",
+          "cachedResultName": "Sanitize"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "textToSanitize": "={{ $json.text }}",
+            "maxLength": 0,
+            "fieldType": "content"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "textToSanitize",
+              "displayName": "textToSanitize",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "fieldType",
+              "displayName": "fieldType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "maxLength",
+              "displayName": "maxLength",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "1287aba6-d24f-4bb6-93d0-9fcf88f11eab",
+      "name": "Sanitize Text"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO Texts\n(TextId, Text, Created, Type, TopicsAnalyzed, RelatedObjectType, RelatedEntityId, RetainUntil)\nOUTPUT INSERTED.TextId\nVALUES (\n  NEWID(),\n  '{{ $json.sanitized }}',\n  GETUTCDATE(),\n  '{{ $('Trigger').item.json.Type }}',\n  0,\n  '{{ $('Trigger').item.json.Type}}',\n  '{{ $('Trigger').item.json.RelatedEntityId}}',\n  DATEADD(DAY, {{ $('Trigger').item.json.RetentionInterval }}, GETUTCDATE())\n)"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "daf44974-e5f8-4376-9d6f-b8c7860e802c",
+      "name": "Insert Text",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "text"
+            },
+            {
+              "name": "RelatedEntityId"
+            },
+            {
+              "name": "RelatedObjectType"
+            },
+            {
+              "name": "Type"
+            },
+            {
+              "name": "RetentionInterval",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "bcd56421-2fb5-4353-a81c-27e4432146ca",
+      "name": "Trigger"
+    }
+  ],
+  "pinData": {
+    "Trigger": [
+      {
+        "json": {
+          "text": "foo",
+          "RelatedEntityId": null,
+          "RelatedObjectType": null,
+          "Type": null
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Sanitize Text": {
+      "main": [
+        [
+          {
+            "node": "Insert Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Sanitize Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3a35cc19-c770-48aa-945f-24e3ef834431",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "1kjw6uL9NbAhKJxB",
+  "tags": []
+}

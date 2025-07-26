@@ -1,0 +1,196 @@
+{
+  "name": "Default Error Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "de6c7f12-758c-4eaf-ac22-a6fb0682b4cd",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ErrorLogs\n(ErrorLogId, WorkflowName, NodeName, ErrorMessage, ErrorDetails, OccurredDate, IsResolved, WorkflowId, StackTrace, Mode, ExecutionId)\nOUTPUT INSERTED.ErrorLogId\nVALUES\n(\n  NEWID(),\n  '{{ $('Normalize Data').item.json.workflowNameSanitized }}',\n  '{{ $('Normalize Data').item.json.lastNodeExecutedSanitized }}',\n  '{{ $('Normalize Data').item.json.errorMessageSanitized }}',\n  NULL,\n  '{{ $('Date Normalization').item.json['Date ISO'] }}',\n  0,\n  NULL,\n  '{{ $('Normalize Data').item.json.errorStackSanitized }}',\n  '{{ $('Normalize Data').item.json.executionMode }}',\n  '{{ $('Normalize Data').item.json.executionId }}'\n)"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        624,
+        0
+      ],
+      "id": "da59d2d7-dd87-432b-86e1-794be5f71386",
+      "name": "Insert Error in SQL",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "QBGufgqBzd2XazzU",
+          "mode": "list",
+          "cachedResultName": "Date Subworkflow"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "de77ff48-8ddd-440f-a6c6-4d477d4a3efe",
+      "name": "Date Normalization"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Execution Data Normalization for SQL & Slack\nconst inputItems = $input.all();\nconst outputItems = [];\n\n// Helper Functions\nfunction sanitizeForSQL(text) {\n  if (!text) return null;\n  if (typeof text !== 'string') {\n    text = String(text);\n  }\n  return text\n    .replace(/'/g, \"''\")      // Escape single quotes for SQL\n    .replace(/\\\\/g, \"\\\\\\\\\")   // Escape backslashes\n    .replace(/\\0/g, \"\")       // Remove null characters\n    .replace(/\\r\\n/g, \" \")    // Replace CRLF with spaces\n    .replace(/\\n/g, \" \")      // Replace LF with spaces\n    .replace(/\\r/g, \" \")      // Replace CR with spaces\n    .replace(/\\t/g, \" \")      // Replace tabs with spaces\n    .replace(/\\s+/g, \" \")     // Collapse multiple spaces\n    .trim();\n}\n\nfunction truncateText(text, maxLength = 4000) {\n  if (!text) return null;\n  if (typeof text !== 'string') {\n    text = String(text);\n  }\n  if (text.length <= maxLength) return text;\n  return text.substring(0, maxLength - 3) + '...';\n}\n\nfunction formatSlackText(text, maxLength = 1000) {\n  if (!text) return null;\n  \n  const truncated = truncateText(text, maxLength);\n  \n  // Escape Slack special characters\n  return truncated\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nfunction determineExecutionStatus(execution) {\n  if (execution.error) return 'error';\n  if (execution.retryOf) return 'retry';\n  return 'success';\n}\n\nfunction generateSlackMessage(normalized) {\n  const status = normalized.executionStatus.toUpperCase();\n  const emoji = normalized.executionStatus === 'error' ? '🔴' : \n                normalized.executionStatus === 'retry' ? '🔄' : '✅';\n  \n  let message = `${emoji} *Workflow Execution ${status}*\\n`;\n  message += `*Workflow:* ${normalized.workflowNameSlack}\\n`;\n  message += `*Execution ID:* ${normalized.executionId}\\n`;\n  message += `*Mode:* ${normalized.executionMode}\\n`;\n  \n  if (normalized.lastNodeExecuted) {\n    message += `*Last Node:* ${normalized.lastNodeExecutedSlack}\\n`;\n  }\n  \n  if (normalized.retryOfExecutionId) {\n    message += `*Retry of:* ${normalized.retryOfExecutionId}\\n`;\n  }\n  \n  if (normalized.hasError) {\n    message += `*Error:* ${normalized.errorMessageSlack}\\n`;\n  }\n  \n  if (normalized.executionUrl) {\n    message += `*Details:* ${normalized.executionUrl}`;\n  }\n  \n  return message;\n}\n\n// Main Processing Loop\nconsole.log(`Processing ${inputItems.length} execution data items`);\n\nfor (let itemIndex = 0; itemIndex < inputItems.length; itemIndex++) {\n  const rawItem = inputItems[itemIndex];\n  \n  try {\n    const item = rawItem.json;\n    const processingTimestamp = new Date();\n    \n    // Extract execution data\n    const execution = item.execution || {};\n    const workflow = item.workflow || {};\n    const error = execution.error || {};\n    \n    // Determine execution status\n    const executionStatus = determineExecutionStatus(execution);\n    const hasError = !!execution.error;\n    const isRetry = !!execution.retryOf;\n    \n    // Build normalized object\n    const normalized = {\n      // Primary identifiers\n      executionId: execution.id ? Number(execution.id) : null,\n      workflowId: workflow.id ? String(workflow.id) : null,\n      retryOfExecutionId: execution.retryOf ? Number(execution.retryOf) : null,\n      \n      // Workflow information\n      workflowName: workflow.name || 'Unknown Workflow',\n      workflowNameSanitized: sanitizeForSQL(workflow.name || 'Unknown Workflow'),\n      workflowNameSlack: formatSlackText(workflow.name || 'Unknown Workflow', 100),\n      \n      // Execution details\n      executionUrl: execution.url || null,\n      executionUrlSanitized: sanitizeForSQL(execution.url || null),\n      executionMode: execution.mode || 'unknown',\n      executionStatus: executionStatus,\n      \n      // Node information\n      lastNodeExecuted: execution.lastNodeExecuted || null,\n      lastNodeExecutedSanitized: sanitizeForSQL(execution.lastNodeExecuted || null),\n      lastNodeExecutedSlack: formatSlackText(execution.lastNodeExecuted || null, 50),\n      \n      // Error handling\n      hasError: hasError,\n      errorMessage: error.message || null,\n      errorMessageSanitized: sanitizeForSQL(error.message || null),\n      errorMessageSlack: formatSlackText(error.message || null, 200),\n      \n      errorStack: error.stack || null,\n      errorStackSanitized: sanitizeForSQL(truncateText(error.stack, 2000)),\n      errorStackTruncated: truncateText(error.stack, 500),\n      \n      // Status flags\n      isRetry: isRetry,\n      isError: hasError,\n      isSuccess: executionStatus === 'success',\n      isManualExecution: execution.mode === 'manual',\n      isWebhookExecution: execution.mode === 'webhook',\n      \n      // Timestamps\n      processedAt: processingTimestamp.toISOString(),\n      processedAtUnix: Math.floor(processingTimestamp.getTime() / 1000),\n      processedAtSQL: processingTimestamp.toISOString().slice(0, 19).replace('T', ' '),\n      processedAtFriendly: processingTimestamp.toLocaleString('en-US', {\n        year: 'numeric',\n        month: 'short',\n        day: 'numeric',\n        hour: '2-digit',\n        minute: '2-digit',\n        second: '2-digit'\n      }),\n      \n      // JSON fields for complex data storage\n      executionDataJson: JSON.stringify({\n        executionId: execution.id ? Number(execution.id) : null,\n        workflowId: workflow.id,\n        mode: execution.mode,\n        retryOf: execution.retryOf ? Number(execution.retryOf) : null,\n        url: execution.url\n      }),\n      \n      errorDataJson: hasError ? JSON.stringify({\n        message: error.message,\n        stack: error.stack,\n        lastNode: execution.lastNodeExecuted,\n        timestamp: processingTimestamp.toISOString()\n      }) : null,\n      \n      workflowMetadataJson: JSON.stringify({\n        workflowId: workflow.id,\n        workflowName: workflow.name,\n        executionMode: execution.mode,\n        processingTimestamp: processingTimestamp.toISOString()\n      }),\n      \n      // Slack-ready message\n      slackMessage: '',  // Will be populated below\n      slackMessageShort: '',  // Will be populated below\n      \n      // Processing metadata\n      processingMetadata: {\n        normalizedAt: processingTimestamp.toISOString(),\n        itemIndex: itemIndex,\n        sourceNode: 'Execution Data Normalizer',\n        version: '1.0',\n        validationPassed: true,\n        dataComplete: !!(execution.id && workflow.id && workflow.name)\n      }\n    };\n    \n    // Generate Slack messages\n    normalized.slackMessage = generateSlackMessage(normalized);\n    normalized.slackMessageShort = `${normalized.isError ? '🔴' : '✅'} ${normalized.workflowNameSlack} (${normalized.executionId}) - ${normalized.executionStatus.toUpperCase()}`;\n    \n    // Validation\n    const missingFields = [];\n    if (!normalized.executionId) missingFields.push('executionId');\n    if (!normalized.workflowId) missingFields.push('workflowId');\n    if (!normalized.workflowName || normalized.workflowName === 'Unknown Workflow') missingFields.push('workflowName');\n    \n    if (missingFields.length > 0) {\n      normalized._error = {\n        type: 'validation_error',\n        message: `Missing critical fields: ${missingFields.join(', ')}`,\n        missingFields: missingFields,\n        originalData: {\n          executionId: execution.id ? Number(execution.id) : null,\n          workflowId: workflow.id,\n          workflowName: workflow.name\n        }\n      };\n      normalized.processingMetadata.validationPassed = false;\n      normalized.processingMetadata.validationErrors = missingFields;\n    }\n    \n    // Add to output with proper pairing\n    outputItems.push({\n      json: normalized,\n      pairedItem: itemIndex\n    });\n    \n  } catch (error) {\n    console.error(`Error processing execution data item ${itemIndex}:`, error.message);\n    \n    // Create error item that maintains pairing\n    const errorItem = {\n      _error: {\n        type: 'processing_error',\n        message: error.message,\n        stack: error.stack,\n        itemIndex: itemIndex,\n        timestamp: new Date().toISOString()\n      },\n      // Include minimal safe data for reference\n      executionId: 'error',\n      workflowId: 'error',\n      workflowName: 'Processing Error',\n      workflowNameSanitized: 'Processing Error',\n      workflowNameSlack: 'Processing Error',\n      executionStatus: 'processing_error',\n      hasError: true,\n      isError: true,\n      errorMessage: 'Failed to normalize execution data',\n      slackMessageShort: '❌ Processing Error - Could not normalize execution data',\n      processingMetadata: {\n        normalizedAt: new Date().toISOString(),\n        itemIndex: itemIndex,\n        validationPassed: false,\n        error: true\n      }\n    };\n    \n    outputItems.push({\n      json: errorItem,\n      pairedItem: itemIndex\n    });\n  }\n}\n\nconsole.log(`Execution data normalization complete. Processed ${outputItems.length} items.`);\n\n// Summary statistics\nconst successCount = outputItems.filter(item => !item.json._error).length;\nconst errorCount = outputItems.filter(item => item.json._error).length;\nconst executionErrors = outputItems.filter(item => item.json.isError && !item.json._error).length;\nconst retryExecutions = outputItems.filter(item => item.json.isRetry && !item.json._error).length;\n\nconsole.log(`Processing Summary - Success: ${successCount}, Processing Errors: ${errorCount}`);\nconsole.log(`Execution Summary - Failed Executions: ${executionErrors}, Retry Executions: ${retryExecutions}`);\n\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "869f11f1-f35a-4ac8-af00-b376a2a73ea9",
+      "name": "Normalize Data"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C09709YKA2V",
+          "mode": "list",
+          "cachedResultName": "n8n-errors"
+        },
+        "messageType": "block",
+        "blocksUi": "={ \"blocks\": {{ JSON.stringify($json.slackBlocks) }} }",
+        "text": "={{ $json.slackText }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        -16
+      ],
+      "id": "e61eccfd-5aff-4009-b78c-b5d4ff976314",
+      "name": "Send a message",
+      "webhookId": "b5d19b58-e88e-4d93-8357-58084f11f1f1",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "0uM3ybFCDqqgYQ0Y",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Generate Slack Blocks for Execution Log\nconst inputItems = $input.all();\nconst outputItems = [];\n\n// Helper function to get status emoji and color\nfunction getStatusIndicators(executionStatus, hasError) {\n  const indicators = {\n    error: { emoji: \"🔴\", color: \"#D93025\", text: \"FAILED\" },\n    retry: { emoji: \"🔄\", color: \"#F9AB00\", text: \"RETRY\" },\n    success: { emoji: \"✅\", color: \"#34A853\", text: \"SUCCESS\" }\n  };\n  \n  return indicators[executionStatus] || indicators.success;\n}\n\n// Helper function to truncate text safely for Slack\nfunction truncateForSlack(text, maxLength = 150) {\n  if (!text) return \"N/A\";\n  if (text.length <= maxLength) return text;\n  return text.substring(0, maxLength - 3) + \"...\";\n}\n\n// Process each execution item\nfor (let itemIndex = 0; itemIndex < inputItems.length; itemIndex++) {\n  const item = inputItems[itemIndex].json;\n  \n  try {\n    const status = getStatusIndicators(item.executionStatus, item.hasError);\n    \n    // Build the Slack blocks\n    const blocks = [\n      // Header with status emoji and workflow name\n      {\n        \"type\": \"header\",\n        \"text\": {\n          \"type\": \"plain_text\",\n          \"text\": JSON.parse(JSON.stringify(`${status.emoji} ${item.workflowName || 'Unknown Workflow'}`)),\n          \"emoji\": true\n        }\n      },\n      \n      // Main execution details in a single section\n      {\n        \"type\": \"section\",\n        \"text\": {\n          \"type\": \"mrkdwn\",\n          \"text\": JSON.parse(JSON.stringify(`*Status:* ${status.text}\\n*Execution ID:* ${item.executionId}\\n*Mode:* ${item.executionMode?.toUpperCase() || 'UNKNOWN'}\\n*Processed:* ${item.processedAtFriendly || 'Unknown'}`))\n        }\n      },\n      \n      // Conditional blocks based on execution status\n      ...(item.lastNodeExecuted ? [{\n        \"type\": \"context\",\n        \"elements\": [\n          {\n            \"type\": \"mrkdwn\",\n            \"text\": JSON.parse(JSON.stringify(`📍 Last executed node: *${item.lastNodeExecuted}*`))\n          }\n        ]\n      }] : []),\n      \n      // Retry information if applicable\n      ...(item.isRetry ? [{\n        \"type\": \"context\",\n        \"elements\": [\n          {\n            \"type\": \"mrkdwn\",\n            \"text\": JSON.parse(JSON.stringify(`🔄 This is a retry of execution #${item.retryOfExecutionId}`))\n          }\n        ]\n      }] : []),\n      \n      // Error details if applicable\n      ...(item.hasError ? [\n        {\n          \"type\": \"section\",\n          \"text\": {\n            \"type\": \"mrkdwn\",\n            \"text\": JSON.parse(JSON.stringify(`*Error Message:*\\n\\`\\`\\`${truncateForSlack(item.errorMessage, 300)}\\`\\`\\``))\n          }\n        },\n        // Error stack in a collapsible format\n        ...(item.errorStack ? [{\n          \"type\": \"section\",\n          \"text\": {\n            \"type\": \"mrkdwn\",\n            \"text\": JSON.parse(JSON.stringify(`*Stack Trace:*\\n\\`\\`\\`${truncateForSlack(item.errorStackTruncated, 500)}\\`\\`\\``))\n          }\n        }] : [])\n      ] : []),\n      \n      // Success message for successful executions\n      ...(!item.hasError ? [{\n        \"type\": \"section\",\n        \"text\": {\n          \"type\": \"mrkdwn\",\n          \"text\": JSON.parse(JSON.stringify(`✨ Workflow completed successfully!`))\n        }\n      }] : []),\n      \n      // Divider before actions\n      {\n        \"type\": \"divider\"\n      },\n      \n      // Action buttons\n      {\n        \"type\": \"actions\",\n        \"elements\": [\n          // View execution button (always present)\n          ...(item.executionUrl ? [{\n            \"type\": \"button\",\n            \"text\": {\n              \"type\": \"plain_text\",\n              \"text\": \"View Execution\",\n              \"emoji\": true\n            },\n            \"style\": \"primary\",\n            \"url\": item.executionUrl\n          }] : []),\n          \n          // Retry button for failed executions\n          ...(item.hasError ? [{\n            \"type\": \"button\",\n            \"text\": {\n              \"type\": \"plain_text\",\n              \"text\": \"Retry Execution\",\n              \"emoji\": true\n            },\n            \"style\": \"danger\",\n            \"action_id\": `retry_execution_${item.executionId}`,\n            \"value\": JSON.stringify({\n              workflowId: item.workflowId,\n              executionId: item.executionId\n            })\n          }] : []),\n          \n          // View workflow button\n          {\n            \"type\": \"button\",\n            \"text\": {\n              \"type\": \"plain_text\",\n              \"text\": \"View Workflow\",\n              \"emoji\": true\n            },\n            \"action_id\": `view_workflow_${item.workflowId}`,\n            \"value\": item.workflowId\n          }\n        ]\n      },\n      \n      // Footer context with metadata\n      {\n        \"type\": \"context\",\n        \"elements\": [\n          {\n            \"type\": \"mrkdwn\",\n            \"text\": JSON.parse(JSON.stringify(`🏷️ Workflow ID: ${item.workflowId} | 📊 Execution ID: ${item.executionId} | ⏰ ${item.processedAtFriendly || 'Unknown'}`))\n          }\n        ]\n      }\n    ];\n    \n    // Create the complete Slack message payload\n    const slackPayload = {\n      // Top-level text for accessibility and notifications\n      text: JSON.parse(JSON.stringify(`${status.emoji} Workflow \"${item.workflowName || 'Unknown'}\" ${status.text.toLowerCase()} - Execution #${item.executionId}`)),\n      \n      // Blocks for rich formatting\n      blocks: blocks,\n      \n      // Message metadata\n      metadata: {\n        event_type: \"n8n_execution_log\",\n        event_payload: {\n          execution_id: item.executionId,\n          workflow_id: item.workflowId,\n          status: item.executionStatus,\n          has_error: item.hasError,\n          is_retry: item.isRetry\n        }\n      },\n      \n      // Unfurl settings\n      unfurl_links: false,\n      unfurl_media: false\n    };\n    \n    // Output the normalized item with Slack payload\n    outputItems.push({\n      json: {\n        ...item,\n        \n        // Add the Slack blocks and payload\n        slackBlocks: blocks,\n        slackPayload: slackPayload,\n        slackText: slackPayload.text,\n        \n        // JSON string versions for direct API use\n        slackBlocksJson: JSON.stringify(blocks),\n        slackPayloadJson: JSON.stringify(slackPayload),\n        \n        // Processing metadata\n        slackProcessingMetadata: {\n          blocksGenerated: true,\n          blockCount: blocks.length,\n          hasActions: true,\n          hasError: item.hasError,\n          generatedAt: new Date().toISOString()\n        }\n      },\n      pairedItem: itemIndex\n    });\n    \n  } catch (error) {\n    console.error(`Error generating Slack blocks for item ${itemIndex}:`, error.message);\n    \n    // Fallback simple message for errors\n    const fallbackBlocks = [\n      {\n        \"type\": \"section\",\n        \"text\": {\n          \"type\": \"mrkdwn\",\n          \"text\": JSON.parse(JSON.stringify(`❌ *Error generating Slack message*\\n\\nExecution ID: ${item.executionId || 'Unknown'}\\nWorkflow: ${item.workflowName || 'Unknown'}\\nError: ${error.message}`))\n        }\n      }\n    ];\n    \n    outputItems.push({\n      json: {\n        ...item,\n        slackBlocks: fallbackBlocks,\n        slackPayload: {\n          text: JSON.parse(JSON.stringify(`Error processing execution log for ${item.workflowName || 'Unknown Workflow'}`)),\n          blocks: fallbackBlocks\n        },\n        slackBlocksJson: JSON.stringify(fallbackBlocks),\n        _error: {\n          type: 'slack_blocks_generation_error',\n          message: error.message\n        }\n      },\n      pairedItem: itemIndex\n    });\n  }\n}\n\nconsole.log(`Generated Slack blocks for ${outputItems.length} execution logs`);\n\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -96
+      ],
+      "id": "f7ea7508-b0fa-4114-a9e6-034b8e90cacc",
+      "name": "Build Slack Payload"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Date Normalization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date Normalization": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Error in SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Error in SQL": {
+      "main": [
+        [
+          {
+            "node": "Build Slack Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Build Slack Payload": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "012a37dc-01d0-4f5a-aaeb-f3e24dc794ba",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "I7RrhBpPeMbJ5YFG",
+  "tags": []
+}

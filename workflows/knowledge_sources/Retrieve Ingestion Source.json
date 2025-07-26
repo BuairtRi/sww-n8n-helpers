@@ -1,0 +1,102 @@
+{
+  "name": "Retrieve Ingestion Source",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "KnowledgeSourceTypeId",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ae02227c-b216-4ef3-a861-3c5c7a049a15",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Complete SQL Query for Quality Check Operations (with Model Configurations and TargetLength)\n-- Use this in your SQL node\nSELECT \n    ks.KnowledgeSourceId,\n\n    kot.Name AS KnowledgeOperationType,\n    ko_quality.Name As KnowledgeOperationName,\n    ko_quality.KnowledgeOperationId,\n    ko_quality.TargetLength AS KnowledgeOperationTargetLength,\n    ko_quality.KnowledgeOperationTypeId,\n    ko_quality.RetentionInterval,\n    \n    -- Primary prompt (Quality Check) configuration\n    ko_quality.Prompt AS Prompt1,\n    ko_quality.Model AS Prompt1Model,\n    ko_quality.ModelProvider AS Prompt1Provider,\n    ko_quality.PromptTemperature AS Prompt1Temperature,\n    ko_quality.MaximumTokens AS Prompt1MaxTokens,\n    \n    -- Secondary prompt (Remediation) configuration\n    ko_quality.Prompt2 AS Prompt2,\n    ko_quality.Prompt2Model AS Prompt2Model,\n    ko_quality.Prompt2ModelProvider AS Prompt2ModelProvider,\n    ko_quality.Prompt2Temperature AS Prompt2Temperature,\n    ko_quality.Prompt2MaximumTokens AS Prompt2MaxTokens,\n    \n    -- Tertiary prompt (Verification) configuration\n    ko_quality.Prompt3 AS Prompt3Prompt,\n    ko_quality.Prompt3Model AS Prompt3Model,\n    ko_quality.Prompt3ModelProvider AS Prompt3ModelProvider,\n    ko_quality.Prompt3Temperature AS Prompt3Temperature,\n    ko_quality.Prompt3MaximumTokens AS Prompt3MaxTokens,\n    \n    -- Additional prompt configurations\n    ko_quality.Prompt4 AS Prompt4,\n    ko_quality.Prompt4Model AS Prompt4Model,\n    ko_quality.Prompt4ModelProvider AS Prompt4ModelProvider,\n    ko_quality.Prompt4Temperature AS Prompt4Temperature,\n    ko_quality.Prompt4MaximumTokens AS Prompt4MaxTokens,\n    \n    ko_quality.Prompt5 AS Prompt5,\n    ko_quality.Prompt5Model AS Prompt5Model,\n    ko_quality.Prompt5ModelProvider AS Prompt5ModelProvider,\n    ko_quality.Prompt5Temperature AS Prompt5Temperature,\n    ko_quality.Prompt5MaximumTokens AS Prompt5MaxTokens,\n    \n    -- KnowledgeSource fields\n    ks.Name AS KnowledgeSourceName,\n    ks.KnowledgeSourceTypeId,\n    ks.Url AS KnowledgeSourceUrl,\n    ks.Active AS SourceActive,\n    ks.SourceId AS SourceId,\n    ks.DetectInterval,\n    ks.LastDetectDate,\n    ks.NextDetectDate,\n    ks.Detect,\n    kst.Name AS KnowledgeSourceType\n   \n\nFROM KnowledgeSources ks \nINNER JOIN KnowledgeSourceTypes kst ON ks.KnowledgeSourceTypeId = kst.KnowledgeSourceTypeId\nINNER JOIN KnowledgeSourceOperations kso ON kso.KnowledgeSourceId = ks.KnowledgeSourceId\nINNER JOIN KnowledgeOperations ko_quality ON ko_quality.KnowledgeOperationId = kso.KnowledgeOperationId\nINNER JOIN KnowledgeOperationTypes kot ON kot.KnowledgeOperationTypeId = ko_quality.KnowledgeOperationTypeId\n\nWHERE \n    -- This is a quality check operation\n    ko_quality.KnowledgeOperationTypeId = 11\n    AND ks.KnowledgeSourceTypeId = {{ $json.KnowledgeSourceTypeId }}\n    AND ks.NextDetectDate <= GETUTCDATE()\n\n\nORDER BY kso.KnowledgeSourceId DESC;"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "f8f61ddd-c102-480f-a345-c20b5cbbfbc0",
+      "name": "Select",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Group Knowledge Source Quality Check Configurations\n// Groups SQL query results by KnowledgeSourceId using sww-n8n-helpers utilities\n\nconst { processItemsWithN8N, validation } = require('sww-n8n-helpers');\n\nconst items = $input.all();\n\nif (items.length === 0) {\n    console.log('No items to process');\n    return [];\n}\n\nconsole.log(`Processing ${items.length} quality check configurations from SQL query`);\n\n// Helper function to format date using validation utilities\nfunction formatDate(dateStr) {\n    if (!dateStr) return null;\n    const formatted = validation.validateAndFormatDate(dateStr);\n    return formatted || dateStr; // Return original if validation fails\n}\n\n// Helper function to create prompt configuration object with safe fallback chains\nfunction createPromptConfig(item, promptNumber) {\n    const data = item.json;\n\n    return {\n        template: validation.createFallbackChain(data, [\n            `Prompt${promptNumber}`,\n            `Prompt${promptNumber}Prompt`\n        ], null),\n        model: validation.createFallbackChain(data, [\n            `Prompt${promptNumber}Model`\n        ], null),\n        modelProvider: validation.createFallbackChain(data, [\n            `Prompt${promptNumber}Provider`,\n            `Prompt${promptNumber}ModelProvider`\n        ], null),\n        temperature: data[`Prompt${promptNumber}Temperature`] ?? null,\n        maxTokens: data[`Prompt${promptNumber}MaxTokens`] ?? null\n    };\n}\n\n// Group items by KnowledgeSourceId using a Map for O(1) lookups\nconst sourceGroups = new Map();\n\n// Process all items and group by source ID\nitems.forEach(item => {\n    const sourceId = item.json.KnowledgeSourceId;\n\n    if (!sourceGroups.has(sourceId)) {\n        // Initialize group with all the data from first record\n        const group = {\n            // Core ID\n            knowledgeSourceId: sourceId,\n\n            // Quality Check Operation Configuration\n            knowledgeOperation: {\n                name: item.json.KnowledgeOperationName,\n                type: item.json.KnowledgeOperationType,\n                operationId: item.json.KnowledgeOperationId,\n                targetLength: item.json.KnowledgeOperationTargetLength,\n                typeId: item.json.KnowledgeOperationTypeId,\n                retentionInterval: item.json.RetentionInterval\n            },\n\n            // KnowledgeSource metadata\n            knowledgeSource: {\n                name: item.json.KnowledgeSourceName,\n                typeId: item.json.KnowledgeSourceTypeId,\n                type: item.json.KnowledgeSourceType,\n                url: item.json.KnowledgeSourceUrl,\n                active: item.json.SourceActive,\n                sourceId: item.json.SourceId,\n                detectInterval: item.json.DetectInterval,\n                lastDetectDate: formatDate(item.json.LastDetectDate),\n                nextDetectDate: formatDate(item.json.NextDetectDate),\n                detect: item.json.Detect\n            },\n\n            // Store all 5 prompt configurations using helper function\n            prompts: {\n                prompt1: createPromptConfig(item, '1'),\n                prompt2: createPromptConfig(item, '2'),\n                prompt3: createPromptConfig(item, '3'),\n                prompt4: createPromptConfig(item, '4'),\n                prompt5: createPromptConfig(item, '5')\n            }\n        };\n\n        sourceGroups.set(sourceId, group);\n    }\n});\n\n// Convert groups to output items using processItemsWithPairing for consistency\nconst groupedItems = Array.from(sourceGroups.values()).map((group, index) => ({\n    json: group,\n    index: index\n}));\n\n// Create N8N batch processing helpers with bound $ function\nconst { processItems } = processItemsWithN8N($);\n\n// Process with modern batch processing and add summary info\nconst result = await processItems(\n    groupedItems,\n    // Processor receives: $item, $json, $itemIndex\n    ($item, $json, $itemIndex) => {\n        const group = $json;\n\n        // Add summary info\n        group.summary = {\n            knowledgeSourceName: group.knowledgeSource.name,\n            sourceType: group.knowledgeSource.type,\n            isActive: group.knowledgeSource.active,\n            qualityCheckOperation: group.knowledgeOperation.name,\n            configuredPrompts: Object.values(group.prompts).filter(p => p.template).length\n        };\n\n        return group;\n    },\n    [], // No additional nodes needed\n    {\n        logErrors: true,\n        stopOnError: false\n    }\n);\n\nconst results = result.results;\n\nconsole.log(`Grouped into ${results.length} Knowledge Source configurations`);\n\n// Log processing statistics\nconsole.log(`Processing completed: ${result.stats.successful}/${result.stats.total} successful (${(result.stats.successRate * 100).toFixed(1)}%)`);\nif (result.stats.failed > 0) {\n    console.log(`Failed items: ${result.stats.failed}`);\n    console.log('Error breakdown:', result.stats.errorBreakdown);\n}\n\n// Log summary using validation utilities for clean object handling\nif (results.length > 0) {\n    console.log('Quality Check Configurations:');\n    results.forEach(item => {\n        const summary = item.json.summary;\n        console.log(`- ${summary.knowledgeSourceName} (${summary.sourceType}): ${summary.configuredPrompts} prompts configured`);\n    });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "e55fa0ff-0ef5-4a4e-945b-8d14778232d4",
+      "name": "Code"
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "KnowledgeSourceTypeId": 1
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Select",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5aa72551-9b28-4d8b-bbeb-c39fefd2706e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "2b9DpthN81TFaDnA",
+  "tags": []
+}

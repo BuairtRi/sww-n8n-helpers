@@ -1,0 +1,136 @@
+{
+  "name": "Update KSIO",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE KnowledgeSourceInstanceOperations\n  SET Executing = 0,\n      ExecutionDate = GETUTCDATE(),\n      ExecutionStart = NULL,\n      TextId = '{{ $('Trigger').item.json.textId }}'\nWHERE KnowledgeSourceInstanceOperationId = '{{ $('Trigger').item.json.KnowledgeSourceInstanceOperationId }}'"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        416,
+        0
+      ],
+      "id": "aa667fe7-d25f-4f50-835f-41179f798e86",
+      "name": "Update KSIO",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ba7f24eb-ce45-4228-8121-5e4ed6debe59",
+              "leftValue": "={{ $json.textId === null || $json.textId === undefined || $json.textId === '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "2bf99fbe-8f6b-4a4c-a271-8e0c34dcc962",
+              "leftValue": "={{ $json.KnowledgeSourceInstanceOperationId === null || $json.KnowledgeSourceInstanceOperationId === undefined || $json.KnowledgeSourceInstanceOperationId === '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a795b61f-fcc3-4302-8262-aa654bd37dc6",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "textId"
+            },
+            {
+              "name": "KnowledgeSourceInstanceOperationId"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "258ebd00-8c65-43ae-906e-731346e87318",
+      "name": "Trigger"
+    }
+  ],
+  "pinData": {
+    "Trigger": [
+      {
+        "json": {
+          "textId": "DA20CF36-50EA-4EA2-B9E1-0E746C5DCC05",
+          "KnowledgeSourceInstanceOperationId": "0FDD78DE-ACBD-40E8-B7BC-072AA2F15AE3"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Update KSIO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "d967b1a6-4fde-4378-b92c-73fe76a0aac8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "9yP2a2ZFu6a62og9",
+  "tags": []
+}

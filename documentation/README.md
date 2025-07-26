@@ -4,15 +4,18 @@ A comprehensive collection of utility functions designed specifically for n8n wo
 
 ## Modules Overview
 
-| Module | Purpose | Key Features |
-|--------|---------|--------------|
-| [Batch Processing](./batch-processing.md) | Process arrays with error handling | Item pairing, parallel processing, retry logic |
-| [Duration Utilities](./duration-utilities.md) | Parse and format time durations | Human-readable formats, HH:MM:SS conversion |
-| [File Utilities](./file-utilities.md) | File and media handling | Safe filename generation, MIME type detection, file size formatting |
-| [N8N Utilities](./n8n-utilities.md) | N8N workflow node data extraction | Node data access, item indexing, error handling |
-| [SQL Sanitization](./sql-sanitization.md) | Prevent SQL injection attacks | T-SQL support, field-specific sanitization |
-| [Text Processing](./text-processing.md) | Clean and manipulate text | HTML cleaning, markdown processing |
-| [Validation](./validation-utilities.md) | Data validation and error handling | Fallback chains, type validation |
+| Module | Purpose | Key Features | Status |
+|--------|---------|--------------|--------|
+| [Batch Processing](./batch-processing.md) | Process arrays with error handling | Item pairing, parallel processing, retry logic | Active |
+| [Data Transform](./data-transform.md) | Business data normalization | Field transformations, null handling, validation | Active |
+| [Duration Utilities](./duration-utilities.md) | Parse and format time durations | Human-readable formats, HH:MM:SS conversion | Active |
+| [File Utilities](./file-utilities.md) | File and media handling | Safe filename generation, MIME type detection, file size formatting | Active |
+| [N8N Utilities](./n8n-utilities.md) | N8N workflow node data extraction | Node data access, item indexing, error handling | Active |
+| [Slack Blocks](./slack-blocks.md) | Slack Block Kit message builder | Type-safe block creation, validation, helpers | Active |
+| [SQL Utilities](./sql-utilities.md) | Safe SQL generation | INSERT/UPDATE builders, escaping, formatting | Active |
+| [Text Processing](./text-processing.md) | Clean and manipulate text | HTML cleaning, markdown processing, truncation | Active |
+| [Validation](./validation-utilities.md) | Data validation and error handling | URL/email validation, fallback chains, type checking | Active |
+| [SQL Sanitization](./sql-sanitization.md) | **DEPRECATED** - Legacy SQL utilities | Use Data Transform + SQL Utilities instead | Deprecated |
 
 ## n8n Built-in Functions Reference
 
@@ -29,8 +32,11 @@ A comprehensive collection of utility functions designed specifically for n8n wo
 In your n8n Code node, import the utilities:
 
 ```javascript
-// Import specific modules
-const { processItemsWithPairing, sanitizeForSQL, validateEmail } = require('sww-n8n-helpers');
+// Import specific functions
+const { processItemsWithPairing, normalizeData, validateEmail } = require('sww-n8n-helpers');
+
+// Import module namespaces
+const { sql, dataTransform, slackBlocks } = require('sww-n8n-helpers');
 
 // Or import the entire library
 const utils = require('sww-n8n-helpers');
@@ -51,22 +57,36 @@ const results = processItemsWithPairing(items, (item) => {
 ### SQL-Safe Data Processing
 
 ```javascript
+const { escape, normalizeData } = require('sww-n8n-helpers');
+
 const userInput = "O'Reilly's \"Book\"";
-const safe = sanitizeForSQL(userInput);
-// Returns: "O''Reilly''s \"Book\"" (quotes escaped for SQL)
+const safe = escape(userInput);
+// Returns: "'O''Reilly''s \"Book\"'" (properly quoted and escaped for SQL)
+
+// Or use data normalization for business logic
+const normalized = normalizeData({ title: userInput }, {
+  title: { type: 'string', maxLength: 250 }
+});
+// Returns: { title: "O'Reilly's \"Book\"" } (ready for SQL generation)
 ```
 
 ### Combined Processing
 
 ```javascript
+const { normalizeData, generateSafeFileName, validateEmail } = require('sww-n8n-helpers');
+
 const title = "My Article: Special \"Chars\"";
 const email = "USER@EXAMPLE.COM";
 
-const safeTitle = sanitizeForSQL(title, { maxLength: 50 });
+// Normalize data with business rules
+const normalized = normalizeData({ title }, {
+  title: { type: 'string', maxLength: 50 }
+});
+
 const validEmail = validateEmail(email) ? email.toLowerCase() : null;
 const filename = generateSafeFileName(title, 'txt');
 
-// Results: "My Article: Special \"Chars\"", "user@example.com", "My_Article__Special__Chars_.txt"
+// Results: { title: "My Article: Special \"Chars\"" }, "user@example.com", "My_Article__Special__Chars_.txt"
 ```
 
 ### N8N Node Data Extraction
@@ -88,35 +108,48 @@ const sourceUrl = nodeData.sources?.url || null;
 ### Enhanced SQL Generation
 
 ```javascript
-const { generateInsertStatement, formatFileSize } = require('sww-n8n-helpers');
+const { generateInsert, normalizeData, formatFileSize } = require('sww-n8n-helpers');
 
-const insertData = {
+const rawData = {
   title: "New Episode",
   fileSize: 15728640,  // 15MB
   publishDate: new Date()
 };
 
-const sql = generateInsertStatement('Episodes', insertData, {
-  outputClause: 'OUTPUT INSERTED.EpisodeId',
-  specialValues: { EpisodeId: 'NEWID()' },
-  fieldMappings: {
-    title: { type: 'title', maxLength: 250 },
-    fileSize: { type: 'int' },
-    publishDate: { type: 'datetime' }
-  }
+// First normalize the data
+const normalized = normalizeData(rawData, {
+  title: { type: 'string', maxLength: 250 },
+  fileSize: { type: 'integer' },
+  publishDate: { type: 'date' }
 });
 
-const readableSize = formatFileSize(insertData.fileSize); // "15.0 MB"
+// Then generate SQL
+const sql = generateInsert('Episodes', normalized, {
+  outputClause: 'OUTPUT INSERTED.EpisodeId',
+  specialValues: { EpisodeId: 'NEWID()' }
+});
+
+const readableSize = formatFileSize(rawData.fileSize); // "15.0 MB"
 ```
 
 ## Common Usage Patterns
 
-### SQL Sanitization
+### Data Normalization and SQL Generation
 
 ```javascript
-const title = sanitizeByFieldType("Breaking News!", 'title');
-const content = sanitizeByFieldType("<p>Content</p>", 'content');
-// Use directly in SQL node: INSERT INTO posts (title, content) VALUES ('{{ $json.title }}', '{{ $json.content }}')
+const { normalizeData, generateInsert, COMMON_FIELD_CONFIGS } = require('sww-n8n-helpers');
+
+// Normalize with common field configurations
+const normalized = normalizeData(
+  { title: "Breaking News!", content: "<p>Content</p>" },
+  {
+    title: COMMON_FIELD_CONFIGS.title,
+    content: COMMON_FIELD_CONFIGS.content
+  }
+);
+
+// Generate SQL with normalized data
+const sql = generateInsert('posts', normalized);
 ```
 
 ### Data Processing

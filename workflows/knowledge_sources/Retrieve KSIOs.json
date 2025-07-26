@@ -1,0 +1,102 @@
+{
+  "name": "Retrieve KSIOs",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "OperationTypeId",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2ef0d1ea-75f7-4110-9249-36d4411b7993",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Complete SQL Query for Quality Check Operations (with Model Configurations and TargetLength)\n-- Use this in your SQL node\nSELECT \n    ksio.KnowledgeSourceInstanceOperationId,\n    ksi.KnowledgeSourceInstanceId,\n    ks.KnowledgeSourceId,\n\n    kot.Name AS KnowledgeOperationType,\n    ko_quality.Name As KnowledgeOperationName,\n    ko_quality.KnowledgeOperationId,\n    ko_quality.TargetLength AS KnowledgeOperationTargetLength,\n    ko_quality.KnowledgeOperationTypeId,\n    ko_quality.RetentionInterval,\n    \n    -- Primary prompt (Quality Check) configuration\n    ko_quality.Prompt AS Prompt1,\n    ko_quality.Model AS Prompt1Model,\n    ko_quality.ModelProvider AS Prompt1Provider,\n    ko_quality.PromptTemperature AS Prompt1Temperature,\n    ko_quality.MaximumTokens AS Prompt1MaxTokens,\n    \n    -- Secondary prompt (Remediation) configuration\n    ko_quality.Prompt2 AS Prompt2,\n    ko_quality.Prompt2Model AS Prompt2Model,\n    ko_quality.Prompt2ModelProvider AS Prompt2ModelProvider,\n    ko_quality.Prompt2Temperature AS Prompt2Temperature,\n    ko_quality.Prompt2MaximumTokens AS Prompt2MaxTokens,\n    \n    -- Tertiary prompt (Verification) configuration\n    ko_quality.Prompt3 AS Prompt3Prompt,\n    ko_quality.Prompt3Model AS Prompt3Model,\n    ko_quality.Prompt3ModelProvider AS Prompt3ModelProvider,\n    ko_quality.Prompt3Temperature AS Prompt3Temperature,\n    ko_quality.Prompt3MaximumTokens AS Prompt3MaxTokens,\n    \n    -- Additional prompt configurations\n    ko_quality.Prompt4 AS Prompt4,\n    ko_quality.Prompt4Model AS Prompt4Model,\n    ko_quality.Prompt4ModelProvider AS Prompt4ModelProvider,\n    ko_quality.Prompt4Temperature AS Prompt4Temperature,\n    ko_quality.Prompt4MaximumTokens AS Prompt4MaxTokens,\n    \n    ko_quality.Prompt5 AS Prompt5,\n    ko_quality.Prompt5Model AS Prompt5Model,\n    ko_quality.Prompt5ModelProvider AS Prompt5ModelProvider,\n    ko_quality.Prompt5Temperature AS Prompt5Temperature,\n    ko_quality.Prompt5MaximumTokens AS Prompt5MaxTokens,\n    \n    -- KnowledgeSource fields\n    ks.Name AS KnowledgeSourceName,\n    ks.KnowledgeSourceTypeId,\n    ks.Url AS KnowledgeSourceUrl,\n    ks.Active AS SourceActive,\n    ks.SourceId AS SourceId,\n    ks.DetectInterval,\n    ks.LastDetectDate,\n    ks.NextDetectDate,\n    ks.Detect,\n    kst.Name AS KnowledgeSourceType,\n    \n    -- KnowledgeSourceInstance fields\n    ksi.Name as InstanceName,\n    ksi.SourceUrl,\n    ksi.SourceId AS InstanceSourceId,\n    ksi.SourceSummary,\n    ksi.SourceDescription,\n    ksi.SourceDate,\n    ksi.Subtitle,\n    ksi.Author,\n    ksi.Duration,\n    ksi.Length,\n    ksi.FriendlyDuration,\n    ksi.FriendlyLength,\n    ksi.SourceFileName,\n    ksi.SourceFileExtension,\n    ksi.SourceMimeType,\n    ksi.ObjectId,\n    ksi.StructuredId,\n    ksi.CreationDate,\n    ksi.SourceLink,\n    ksi.SourceImageUrl,\n    ksi.Active AS InstanceActive,\n    \n    -- Dependent operation and text data\n    ko_dep.Name AS OperationName,\n    ko_dep.TargetLength,\n    t.Text,\n    t.TextId,\n    t.Type AS TextType,\n    t.Created\n\nFROM KnowledgeSourceInstances ksi\nINNER JOIN KnowledgeSources ks ON ks.KnowledgeSourceId = ksi.KnowledgeSourceId\nINNER JOIN KnowledgeSourceTypes kst ON ks.KnowledgeSourceTypeId = kst.KnowledgeSourceTypeId\nINNER JOIN KnowledgeSourceInstanceOperations ksio ON ksi.KnowledgeSourceInstanceId = ksio.KnowledgeSourceInstanceId\nINNER JOIN KnowledgeSourceOperations kso ON ksio.KnowledgeSourceOperationId = kso.KnowledgeSourceOperationId\nINNER JOIN KnowledgeOperations ko_quality ON ko_quality.KnowledgeOperationId = kso.KnowledgeOperationId\nINNER JOIN KnowledgeOperationTypes kot ON kot.KnowledgeOperationTypeId = ko_quality.KnowledgeOperationTypeId\n\n-- Get dependent operations\nCROSS APPLY (\n    SELECT LTRIM(RTRIM(ss.value)) AS OperationId\n    FROM STRING_SPLIT(ko_quality.DependentOperationIds, ',') ss\n    WHERE ss.value IS NOT NULL AND LTRIM(RTRIM(ss.value)) != ''\n) depOps\n\n-- Join to dependent operations and their texts\nINNER JOIN KnowledgeOperations ko_dep ON CAST(ko_dep.KnowledgeOperationId AS NVARCHAR(36)) = depOps.OperationId\nINNER JOIN KnowledgeSourceOperations kso_dep ON kso_dep.KnowledgeOperationId = ko_dep.KnowledgeOperationId\nINNER JOIN KnowledgeSourceInstanceOperations ksio_dep ON ksio_dep.KnowledgeSourceOperationId = kso_dep.KnowledgeSourceOperationId\nINNER JOIN Texts t ON t.TextId = ksio_dep.TextId\n\nWHERE \n    -- This is a quality check operation\n    ko_quality.KnowledgeOperationTypeId = {{ $json.OperationTypeId }}  \n    -- Quality check not yet processed\n    AND ksio.TextId IS NULL              \n    AND ksio.Executing = 0               \n    AND ksio.BatchId IS NULL             \n    -- Dependent operation is for the same instance\n    AND ksio_dep.KnowledgeSourceInstanceId = ksi.KnowledgeSourceInstanceId\n    -- Ensure ALL dependent operations are complete for this instance\n    AND NOT EXISTS (\n        SELECT 1\n        FROM STRING_SPLIT(ko_quality.DependentOperationIds, ',') ss\n        WHERE NOT EXISTS (\n            SELECT 1 \n            FROM KnowledgeSourceInstanceOperations ksio_check\n            INNER JOIN KnowledgeSourceOperations kso_check ON ksio_check.KnowledgeSourceOperationId = kso_check.KnowledgeSourceOperationId \n            INNER JOIN KnowledgeOperations ko_check ON kso_check.KnowledgeOperationId = ko_check.KnowledgeOperationId\n            WHERE CAST(ko_check.KnowledgeOperationId AS NVARCHAR(36)) = LTRIM(RTRIM(ss.value))\n              AND ksio_check.KnowledgeSourceInstanceId = ksi.KnowledgeSourceInstanceId\n              AND ksio_check.TextId IS NOT NULL\n        )\n    )\n\nORDER BY ksio.KnowledgeSourceInstanceOperationId, ko_dep.Name, t.Created DESC;"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "81a385e1-96ef-4783-9d12-e1f391d8f270",
+      "name": "KSIOs",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Group KSIO Data (Simplified)\n// Groups SQL query results by KnowledgeSourceInstanceOperationId\n\nconst items = $input.all();\nconst outputItems = [];\n\nif (items.length === 0) {\n  console.log('No items to process');\n  return [];\n}\n\nconsole.log(`Processing ${items.length} text records from SQL query`);\n\n// Helper function to format date\nfunction formatDate(dateStr) {\n  if (!dateStr) return null;\n  try {\n    return new Date(dateStr).toISOString();\n  } catch {\n    return dateStr;\n  }\n}\n\n// Helper function to count total words excluding pure special character strings\nfunction countTotalWords(text) {\n  if (!text || typeof text !== 'string') return 0;\n  \n  // Split by whitespace and common punctuation\n  const words = text.split(/\\s+|[,;.!?()[\\]{}\"|]/);\n  \n  // Count valid words\n  let wordCount = 0;\n  \n  for (const word of words) {\n    // Clean the word (trim whitespace)\n    const cleanWord = word.trim();\n    \n    // Skip empty strings\n    if (!cleanWord) continue;\n    \n    // Check if the word contains only special characters\n    // This regex matches if the string contains ONLY non-alphanumeric characters\n    const isPureSpecialChars = /^[^a-zA-Z0-9]+$/.test(cleanWord);\n    \n    // If it's not pure special characters, count it\n    if (!isPureSpecialChars) {\n      wordCount++;\n    }\n  }\n  \n  return wordCount;\n}\n\n// Group items by KnowledgeSourceInstanceOperationId\nconst ksioGroups = {};\n\nfor (const item of items) {\n  const ksioId = item.json.KnowledgeSourceInstanceOperationId;\n  \n  if (!ksioGroups[ksioId]) {\n    // Initialize group with all the data from first record\n    ksioGroups[ksioId] = {\n      // Core IDs\n      ksioId: ksioId,\n      instanceId: item.json.KnowledgeSourceInstanceId,\n      knowledgeSourceId: item.json.KnowledgeSourceId,\n\n      knowledgeOperation: {\n        name: $input.first().json.KnowledgeOperationName,\n        type: $input.first().json.KnowledgeOperationType,\n        operationId: $input.first().json.KnowledgeOperationId,\n        targetLength: $input.first().json.KnowledgeOperationTargetLength,\n        typeId: $input.first().json.KnowledgeOperationTypeId,\n        retentionInterval: $input.first().json.retentionInterval\n      },\n      \n      // KnowledgeSource metadata\n      knowledgeSource: {\n        name: item.json.KnowledgeSourceName,\n        typeId: item.json.KnowledgeSourceTypeId,\n        type: $input.first().json.KnowledgeSourceType,\n        url: item.json.KnowledgeSourceUrl,\n        active: item.json.SourceActive,\n        sourceId: item.json.SourceId,\n        detectInterval: item.json.DetectInterval,\n        lastDetectDate: formatDate(item.json.LastDetectDate),\n        nextDetectDate: formatDate(item.json.NextDetectDate),\n        detect: item.json.Detect\n      },\n      \n      // KnowledgeSourceInstance metadata\n      instance: {\n        name: item.json.InstanceName,\n        sourceUrl: item.json.SourceUrl,\n        sourceId: item.json.InstanceSourceId,\n        sourceSummary: item.json.SourceSummary,\n        sourceDescription: item.json.SourceDescription,\n        sourceDate: formatDate(item.json.SourceDate),\n        subtitle: item.json.Subtitle,\n        author: item.json.Author,\n        duration: item.json.Duration,\n        length: item.json.Length,\n        friendlyDuration: item.json.FriendlyDuration,\n        friendlyLength: item.json.FriendlyLength,\n        sourceFileName: item.json.SourceFileName,\n        sourceFileExtension: item.json.SourceFileExtension,\n        sourceMimeType: item.json.SourceMimeType,\n        objectId: item.json.ObjectId,\n        structuredId: item.json.StructuredId,\n        creationDate: formatDate(item.json.CreationDate),\n        sourceLink: item.json.SourceLink,\n        sourceImageUrl: item.json.SourceImageUrl,\n        active: item.json.InstanceActive\n      },\n      \n      // Store all 5 prompt configurations\n      prompts: {\n        prompt1: {\n          template: item.json.Prompt1,\n          model: item.json.Prompt1Model,\n          modelProvider: item.json.Prompt1Provider,\n          temperature: item.json.Prompt1Temperature,\n          maxTokens: item.json.Prompt1MaxTokens,\n          executionCount: 0\n        },\n        prompt2: {\n          template: item.json.Prompt2,\n          model: item.json.Prompt2Model,\n          modelProvider: item.json.Prompt2ModelProvider,\n          temperature: item.json.Prompt2Temperature,\n          maxTokens: item.json.Prompt2MaxTokens,\n          executionCount: 0\n        },\n        prompt3: {\n          template: item.json.Prompt3Prompt,\n          model: item.json.Prompt3Model,\n          modelProvider: item.json.Prompt3ModelProvider,\n          temperature: item.json.Prompt3Temperature,\n          maxTokens: item.json.Prompt3MaxTokens,\n          executionCount: 0\n        },\n        prompt4: {\n          template: item.json.Prompt4,\n          model: item.json.Prompt4Model,\n          modelProvider: item.json.Prompt4ModelProvider,\n          temperature: item.json.Prompt4Temperature,\n          maxTokens: item.json.Prompt4MaxTokens,\n          executionCount: 0\n        },\n        prompt5: {\n          template: item.json.Prompt5,\n          model: item.json.Prompt5Model,\n          modelProvider: item.json.Prompt5ModelProvider,\n          temperature: item.json.Prompt5Temperature,\n          maxTokens: item.json.Prompt5MaxTokens,\n          executionCount: 0\n        }\n      },\n      \n      // Initialize operations object\n      operations: {}\n    };\n  }\n  \n  // Add operation text\n  const operationName = item.json.OperationName;\n  const text = item.json.Text;\n  \n  if (operationName && text) {\n    // Store the operation text (keep the most recent if duplicates)\n    if (!ksioGroups[ksioId].operations[operationName] || \n        new Date(item.json.Created) > new Date(ksioGroups[ksioId].operations[operationName].created)) {\n      ksioGroups[ksioId].operations[operationName] = {\n        text: text,\n        textId: item.json.TextId,\n        textType: item.json.TextType,\n        created: item.json.Created,\n        targetLength: item.json.TargetLength,\n        wordCount: countTotalWords(text),  // Add word count here\n        executionCount: 0\n      };\n    }\n  }\n}\n\n// Convert groups to output items\nlet itemIndex = 0;\nfor (const [ksioId, group] of Object.entries(ksioGroups)) {\n  outputItems.push({\n    json: group,\n    pairedItem: itemIndex\n  });\n  itemIndex++;\n}\n\nconsole.log(`Grouped into ${outputItems.length} KSIOs`);\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "a2304bbc-798e-4ca2-aebd-dda60cfa6208",
+      "name": "Group"
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "OperationTypeId": 5
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "KSIOs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KSIOs": {
+      "main": [
+        [
+          {
+            "node": "Group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ddb60f96-32f4-4ed5-abaa-5e458475d661",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "MDtcmxTdUdbDPaDq",
+  "tags": []
+}

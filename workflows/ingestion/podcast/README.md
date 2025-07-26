@@ -3,6 +3,38 @@
 ## Overview
 This workflow handles the automated ingestion of podcast episodes from RSS feeds into the RiN8N knowledge management system. It retrieves podcast feeds, normalizes episode data, checks for duplicates, stores new episodes, and creates associated processing operations.
 
+## Workflow Diagram
+
+```mermaid
+graph TD
+    A[Schedule Trigger<br/>Hourly] --> B[Ingestion Sources<br/>Execute Workflow]
+    B --> C[Check Podcast Feed<br/>RSS Feed Read]
+    C --> D[Podcast Episodes<br/>Code Node - Normalize Data]
+    D --> E{Switch1<br/>Publication Date Filter}
+    
+    E -->|Process| F[Podcast Exists SQL<br/>Code Node - Generate Query]
+    E -->|Skip| G[Update Feeds<br/>SQL Execute - DISABLED]
+    
+    F --> H[Podcast Exists<br/>SQL Execute - Check Duplicates]
+    H --> I{Switch<br/>Episode Exists?}
+    
+    I -->|Existing| J[Merge]
+    I -->|New| K[Build Podcast Record SQL<br/>Code Node - Generate Insert]
+    
+    K --> L[Create Podcast Record<br/>SQL Execute - Insert Episode]
+    L --> M[Build Knowledge Operations SQL<br/>Code Node - Generate Operations]
+    M --> N[Create Knowledge Operations<br/>SQL Execute - Create Links]
+    N --> O[Slack Blocks<br/>Code Node - Format Notification]
+    O --> P[Notify<br/>Slack - Send Message]
+    P --> J[Merge]
+    
+    J --> G[Update Feeds]
+
+    style A fill:#f9f,stroke:#333,stroke-width:4px
+    style P fill:#9f9,stroke:#333,stroke-width:4px
+    style G fill:#fcc,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+```
+
 ## Workflow Structure
 
 ### 1. Source Discovery

@@ -1,0 +1,395 @@
+{
+  "name": "Add Knowledge Source",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO KnowledgeSources\n  ([KnowledgeSourceId]\n  ,[Name]\n  ,[KnowledgeSourceTypeId]\n  ,[Url]\n  ,[Active]\n  ,[SourceId]\n  ,[DetectInterval]\n  ,[LastDetectDate]\n  ,[NextDetectDate]\n  ,[Detect])\nOUTPUT INSERTED.KnowledgeSourceId\nVALUES\n(\n  NEWID(),\n  '{{ $('Sanitize').item.json.NameSanitized }}',\n  {{ $('Validate').item.json.data.KnowledgeSourceTypeId }},\n  {{ $('Sanitize').item.json.SourceUrlSanitized ? '\\'' + $('Sanitize').item.json.SourceUrlSanitized + '\\'' : 'NULL' }},\n  1,\n  {{ $('Sanitize').item.json.SourceIdSanitized ? '\\'' + $('Sanitize').item.json.SourceIdSanitized + '\\'' : 'NULL' }},\n  {{ $('Validate').item.json.data.DetectInterval }},\n  '{{ $('Validate').item.json.data.LastDetectDate }}',\n  '{{ $('Validate').item.json.data.LastDetectDate }}',\n  1\n)"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        992,
+        -144
+      ],
+      "id": "9bcda40e-6bc0-4c6e-90f2-63f73fe71cf5",
+      "name": "Insert Knowledge Source",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b071c2db-d2d5-4a35-b791-2b6568cb9a6a",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        432,
+        0
+      ],
+      "id": "d7671479-6f5e-484d-b420-f459b59ab665",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        832,
+        96
+      ],
+      "id": "176cc7f2-6c6b-4bf2-8087-0c7448523c95",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1520,
+        -144
+      ],
+      "id": "046a8e86-8dd4-4aec-86c5-08a6aa2b0493",
+      "name": "Complete"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "b608f4ff-e21f-4cdf-96ab-ab2ea6ec48b4",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2b8021f5-d8c8-4b2b-87a4-9bf7da7f1b75",
+      "name": "Trigger",
+      "webhookId": "b608f4ff-e21f-4cdf-96ab-ab2ea6ec48b4",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "7thrzSCdTVKutunh",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ZlsoVWHIsWDDuKgx",
+          "mode": "list",
+          "cachedResultName": "Validate Incoming Webhook Data"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "data": "={{ $json.body }}",
+            "requiredFields": "KnowledgeSourceTypeId,Name,PipelineId,DetectInterval,LastDetectDate"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "requiredFields",
+              "displayName": "requiredFields",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "fieldRules",
+              "displayName": "fieldRules",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "e0573570-933b-48af-9f27-a84dd97547b3",
+      "name": "Validate"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "y86pKNKlGOW4vM97",
+          "mode": "list",
+          "cachedResultName": "Sanitize"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "maxLength": 0,
+            "objectToSanitize": "={{ $('Validate').item.json.data }}",
+            "fieldsToSanitize": "Name,SourceUrl,SourceId"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "textToSanitize",
+              "displayName": "textToSanitize",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "fieldType",
+              "displayName": "fieldType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "maxLength",
+              "displayName": "maxLength",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "objectToSanitize",
+              "displayName": "objectToSanitize",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "fieldsToSanitize",
+              "displayName": "fieldsToSanitize",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        -96
+      ],
+      "id": "dfb0b0c4-1332-4164-9453-6c7d94946c8f",
+      "name": "Sanitize"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO KnowledgeSourceOperations\n([KnowledgeSourceOperationId]\n,[KnowledgeSourceId]\n,[KnowledgeOperationId]\n,[Name]\n,[Interval]\n,[LastExecuted]\n,[NextExecution])\nOUTPUT INSERTED.KnowledgeSourceOperationId\nSELECT \n  NEWID(),\n  '{{ $('Insert Knowledge Source').item.json.KnowledgeSourceId }}',\n  KnowledgeOperationId,\n  Name,\n  NULL, \n  NULL,\n  NULL\nFROM KnowledgeOperations\nWHERE PipelineId = '{{ $('Validate').item.json.data.PipelineId }}'"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        -144
+      ],
+      "id": "1d19ad53-bd4d-45fc-a5e2-e987d1ac84c2",
+      "name": "Microsoft SQL",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Trigger": [
+      {
+        "json": {
+          "headers": {
+            "connection": "Keep-Alive",
+            "content-type": "application/json",
+            "accept": "*/*",
+            "accept-encoding": "gzip",
+            "host": "n8n.scottwebworks.net",
+            "max-forwards": "10",
+            "user-agent": "ReactorNetty/1.1.22",
+            "n8nkey": "ZvFnK8j_!k2RJAdunr6v*Ne",
+            "x-forwarded-proto": "https",
+            "x-forwarded-for": "192.168.1.1, 192.168.1.1:57416",
+            "x-real-ip": "192.168.1.1",
+            "x-forwarded-host": "n8n.scottwebworks.net",
+            "x-forwarded-port": "443",
+            "x-original-url": "/webhook/f67ae114-49c9-4dfe-a2be-d0b3641fda68",
+            "x-arr-ssl": "4096|256|C=US, O=DigiCert Inc, OU=www.digicert.com, CN=RapidSSL TLS RSA CA G1|CN=*.scottwebworks.net",
+            "x-arr-log-id": "7a355a49-1a84-4f06-a57a-923ebb44e4a7",
+            "content-length": "330"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "KnowledgeSourceTypeId": 1,
+            "SourceUrl": "https://feeds.simplecast.com/dxZsm5kX",
+            "PipelineId": "79B9240E-BEF5-4262-AA3D-F1D450544BDE",
+            "LastDetectDate": "2025-07-01T07:00:00.000Z",
+            "Name": "Pod Save Amurica",
+            "DetectInterval": 1440
+          },
+          "webhookUrl": "https://n8n.scottwebworks.net/webhook/webhook/f67ae114-49c9-4dfe-a2be-d0b3641fda68",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Sanitize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Knowledge Source": {
+      "main": [
+        [
+          {
+            "node": "Microsoft SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitize": {
+      "main": [
+        [
+          {
+            "node": "Insert Knowledge Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft SQL": {
+      "main": [
+        [
+          {
+            "node": "Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "7c452afb-bfda-4520-98b1-50a00fd2e809",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "N44zLVs17cjAs6Au",
+  "tags": []
+}

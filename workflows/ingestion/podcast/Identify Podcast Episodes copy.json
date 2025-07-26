@@ -1,0 +1,610 @@
+{
+  "name": "Identify Podcast Episodes copy",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -48,
+        0
+      ],
+      "id": "36bb0cc5-aac7-499b-9d61-f662e22b3212",
+      "name": "Schedule"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Ingestion Sources').item.json.knowledgeSource.url }}",
+        "options": {
+          "ignoreSSL": false
+        }
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "abda81b1-9551-4ea4-a233-ca125ec8fbcd",
+      "name": "Check Podcast Feed"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $('Podcast Exists SQL').item.json.query }}"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        1632,
+        -160
+      ],
+      "id": "d86ebdc3-91d7-4056-b3eb-a0e6eab71c32",
+      "name": "Podcast Exists",
+      "alwaysOutputData": true,
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.episode_exists }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "5177536c-06ff-4bc0-914d-c5285c168b5f"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "existing_episode"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "6a268b38-17a7-4b1c-8540-4417f7f7b0ec",
+                    "leftValue": "={{ $json.episode_exists }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "new_episode"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1872,
+        -160
+      ],
+      "id": "35a39d31-4a5c-49bd-9a6f-2333daf1882c",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $('Build Podcast Record SQL').item.json.query }}"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        2512,
+        -336
+      ],
+      "id": "1273c495-8eb1-4564-b680-1f9278158ebd",
+      "name": "Create Podcast Record",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE KnowledgeSources\nSET LastDetectDate = GETUTCDATE(),\n    NextDetectDate = DATEADD(MINUTE, DetectInterval, GETUTCDATE())\nWHERE KnowledgeSourceId = '{{ $('Ingestion Sources').item.json.knowledgeSourceId }}'"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        4096,
+        -256
+      ],
+      "id": "ab9f8496-b493-4ebc-9762-95511e985d1d",
+      "name": "Update Feeds",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3824,
+        0
+      ],
+      "id": "f0b18c87-e663-40f0-9a51-3dd97991fd9d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced Slack Notification for New Podcast Episodes (Batch Mode) - Clean Architecture\n// Creates rich, informative Slack blocks using normalized episode data\n// Uses new accessor pattern for reliable node data access\n\nconst { \n  processItemsWithAccessors,\n  normalizeData,\n  COMMON_FIELD_CONFIGS,\n  createFallbackChain,\n  validateAndExtractUrl,\n  generateExcerpt\n} = require('sww-n8n-helpers');\n\n// Helper function for safe text handling with Slack escaping and normalization\nfunction safeSlackText(text, maxLength = 150) {\n  if (!text) return \"N/A\";\n  \n  // Normalize the text using our data transform utilities\n  const normalizedText = normalizeData(\n    { text: text }, \n    { text: { type: 'string', cleanHtml: true, trimWhitespace: true, maxLength: maxLength } }\n  ).text;\n  \n  if (!normalizedText) return \"N/A\";\n  \n  // Basic escaping for special characters\n  return normalizedText\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\");\n}\n\n// Helper function to create key-value rich text blocks\nfunction createKeyValueBlock(key, value, maxLength = 200) {\n  if (!value || value === 'N/A' || value === 'Unknown') return null;\n  \n  return {\n    \"type\": \"rich_text\",\n    \"elements\": [\n      {\n        \"type\": \"rich_text_section\",\n        \"elements\": [\n          {\n            \"type\": \"text\",\n            \"text\": `${key}: `,\n            \"style\": { \"bold\": true }\n          },\n          {\n            \"type\": \"text\",\n            \"text\": safeSlackText(value, maxLength)\n          }\n        ]\n      }\n    ]\n  };\n}\n\n// Helper function to create action buttons with URL validation\nfunction createActionButton(text, url, style = \"primary\") {\n  // Use validateAndExtractUrl to ensure URL is valid\n  const validUrl = validateAndExtractUrl(url);\n  if (!validUrl) return null;\n  \n  return {\n    \"type\": \"button\",\n    \"text\": {\n      \"type\": \"plain_text\",\n      \"text\": safeSlackText(text, 75),\n      \"emoji\": true\n    },\n    \"style\": style,\n    \"url\": validUrl\n  };\n}\n\n// Get all input items for batch processing\nconst inputData = $input.all();\n\nconsole.log(`Processing ${inputData.length} episodes for Slack notifications`);\n\n// Define node accessors that preserve itemMatching behavior\nconst nodeAccessors = {\n  'Podcast Episodes': (itemIndex) => $('Podcast Episodes').itemMatching(itemIndex)?.json,\n  'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json\n};\n\n// Process items using clean architecture\nconst result = await processItemsWithAccessors(\n  inputData,\n  // Processor function receives: $item, $json, $itemIndex, podcastEpisode, ingestionSources (from accessors)\n  (_$item, $json, $itemIndex, podcastEpisode, ingestionSources) => {\n    \n    console.log(`Processing Slack notification for item ${$itemIndex}:`, {\n      hasEpisodeData: !!podcastEpisode,\n      hasIngestionSources: !!ingestionSources,\n      episodeTitle: podcastEpisode?.title || 'Unknown',\n      podcastName: ingestionSources?.knowledgeSource?.name || 'Unknown',\n      inputItemKeys: $json ? Object.keys($json) : 'no json'\n    });\n    \n    // Define normalization schema for Slack notification data\n    const slackDataSchema = {\n      // Episode fields\n      title: COMMON_FIELD_CONFIGS.title,\n      summary: { ...COMMON_FIELD_CONFIGS.summary, cleanHtml: true },\n      description: { ...COMMON_FIELD_CONFIGS.description, cleanHtml: true },\n      author: COMMON_FIELD_CONFIGS.author,\n      duration: COMMON_FIELD_CONFIGS.duration,\n      durationFriendly: { type: 'string', maxLength: 50, trimWhitespace: true },\n      publicationDate: COMMON_FIELD_CONFIGS.publicationDate,\n      publicationDateFriendly: { type: 'string', maxLength: 100, trimWhitespace: true },\n      episodeLink: COMMON_FIELD_CONFIGS.url,\n      audioUrl: COMMON_FIELD_CONFIGS.sourceUrl,\n      audioFileSize: COMMON_FIELD_CONFIGS.fileSize,\n      audioFileSizeFriendly: { type: 'string', maxLength: 50, trimWhitespace: true },\n      fileExtension: COMMON_FIELD_CONFIGS.fileExtension,\n      // Podcast fields\n      podcastName: { ...COMMON_FIELD_CONFIGS.name, maxLength: 200 },\n      // Optional fields\n      season: { type: 'integer', required: false },\n      episodeType: { type: 'string', maxLength: 50, trimWhitespace: true, required: false },\n      keywords: { type: 'string', maxLength: 500, trimWhitespace: true, required: false }\n    };\n\n    // Prepare raw data for normalization (combining episode and ingestion source data)\n    const rawSlackData = {\n      // Episode data (prefer from accessor, fallback to input)\n      ...(podcastEpisode || $json || {}),\n      // Podcast name from ingestion sources\n      podcastName: ingestionSources?.knowledgeSource?.name,\n    };\n\n    // Apply business normalization\n    const normalizedData = normalizeData(rawSlackData, slackDataSchema);\n    \n    // Use normalized data\n    const episodeData = normalizedData;\n    const podcastData = { Name: normalizedData.podcastName };\n    \n    // Check if this is an error item\n    if (episodeData.$error || episodeData._error) {\n      const error = episodeData.$error || episodeData._error;\n      return {\n        \"text\": `⚠️ Episode processing error: ${error.message}`,\n        \"blocks\": [\n          {\n            \"type\": \"section\",\n            \"text\": {\n              \"type\": \"mrkdwn\",\n              \"text\": `⚠️ *Episode Processing Error*\\n\\n*Error:* ${error.message}\\n\\n*Episode:* ${episodeData.title || 'Unknown'}\\n*GUID:* ${episodeData.episodeGuid || 'Unknown'}\\n*Item Index:* ${$itemIndex}`\n            }\n          }\n        ]\n      };\n    }\n  \n    // Extract key episode information using fallback chains for robust data access\n    const episodeTitle = createFallbackChain(episodeData, ['title', 'name'], 'Unknown Episode');\n    const podcastName = createFallbackChain(podcastData, ['Name', 'title', 'name'], 'Unknown Podcast');\n    const duration = createFallbackChain(episodeData, ['durationFriendly', 'duration']);\n    const author = createFallbackChain(episodeData, ['author', 'itunesAuthor', 'creator']);\n    const publishDate = createFallbackChain(episodeData, ['publicationDateFriendly', 'publishDate', 'pubDate']);\n    const rawSummary = createFallbackChain(episodeData, ['slackSummary', 'episodeSummary', 'summary', 'description']);\n    const episodeLink = validateAndExtractUrl(createFallbackChain(episodeData, ['episodeLink', 'link', 'url']));\n    const audioUrl = validateAndExtractUrl(createFallbackChain(episodeData, ['audioUrl', 'enclosureUrl', 'mediaUrl']));\n    const fileSize = createFallbackChain(episodeData, ['audioFileSizeFriendly', 'fileSizeFriendly', 'fileSize']);\n    const fileType = createFallbackChain(episodeData, ['fileExtension', 'extension'])?.toUpperCase();\n    const season = createFallbackChain(episodeData, ['itunesSeason', 'season']);\n    const episodeType = createFallbackChain(episodeData, ['itunesEpisodeType', 'episodeType'], 'full');\n    const keywords = createFallbackChain(episodeData, ['itunesKeywords', 'keywords', 'tags']);\n    \n    // Generate smart excerpt from summary/description\n    const summary = rawSummary ? generateExcerpt(rawSummary, 300, { completeSentences: true }) : null;\n  \n    // Build blocks array starting with header\n    const blocks = [\n    // Header with podcast name and new episode indicator\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": `🎧 New Episode: ${safeSlackText(podcastName, 130)}`,\n        \"emoji\": true\n      }\n    },\n    \n    // Episode title as prominent section\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": `*${safeSlackText(episodeTitle, 500)}*`\n      }\n    }\n    ];\n    \n    // Add episode metadata - only include fields that have values\n    const metadataBlocks = [];\n    \n    if (author) {\n      const authorBlock = createKeyValueBlock(\"Host/Author\", author);\n      if (authorBlock) metadataBlocks.push(authorBlock);\n    }\n    \n    if (publishDate) {\n      const dateBlock = createKeyValueBlock(\"Published\", publishDate);\n      if (dateBlock) metadataBlocks.push(dateBlock);\n    }\n    \n    if (duration) {\n      const durationBlock = createKeyValueBlock(\"Duration\", duration);\n      if (durationBlock) metadataBlocks.push(durationBlock);\n    }\n    \n    // Season and episode type info\n    const episodeInfo = [];\n    if (season) episodeInfo.push(`Season ${season}`);\n    if (episodeType && episodeType !== 'full') episodeInfo.push(episodeType.charAt(0).toUpperCase() + episodeType.slice(1));\n    \n    if (episodeInfo.length > 0) {\n      const episodeInfoBlock = createKeyValueBlock(\"Episode Info\", episodeInfo.join(' • '));\n      if (episodeInfoBlock) metadataBlocks.push(episodeInfoBlock);\n    }\n    \n    // Add all metadata blocks\n    blocks.push(...metadataBlocks);\n    \n    // Add summary if available and substantial\n    if (summary && summary.trim().length > 10) {\n      blocks.push({\n        \"type\": \"section\",\n        \"text\": {\n          \"type\": \"mrkdwn\",\n          \"text\": safeSlackText(summary, 1000)\n        }\n      });\n    }\n    \n    // Add keywords if available\n    if (keywords && keywords.trim().length > 0) {\n      blocks.push({\n        \"type\": \"context\",\n        \"elements\": [\n          {\n            \"type\": \"mrkdwn\",\n            \"text\": `🏷️ *Keywords:* ${safeSlackText(keywords, 500)}`\n          }\n        ]\n      });\n    }\n    \n    // Add divider before actions\n    blocks.push({ \"type\": \"divider\" });\n    \n    // Create action buttons\n    const actionElements = [];\n    \n    // Primary action - Listen button (prefer episode page over direct audio)\n    if (episodeLink) {\n      const listenButton = createActionButton(\"🎧 Listen to Episode\", episodeLink, \"primary\");\n      if (listenButton) actionElements.push(listenButton);\n    } else if (audioUrl) {\n      const audioButton = createActionButton(\"🎵 Play Audio\", audioUrl, \"primary\");\n      if (audioButton) actionElements.push(audioButton);\n    }\n    \n    // Secondary action - Direct audio link if we also have episode page\n    if (episodeLink && audioUrl && episodeLink !== audioUrl) {\n      const audioButton = createActionButton(\"📥 Direct Audio\", audioUrl);\n      if (audioButton) actionElements.push(audioButton);\n    }\n    \n    // Add actions if we have any\n    if (actionElements.length > 0) {\n      blocks.push({\n        \"type\": \"actions\",\n        \"elements\": actionElements\n      });\n    }\n    \n    // Add context footer with file info and publication date\n    const contextInfo = [];\n    \n    if (publishDate) {\n      contextInfo.push(`📅 ${publishDate}`);\n    }\n    \n    if (fileType && fileSize) {\n      contextInfo.push(`📁 ${fileType} • ${fileSize}`);\n    } else if (fileType) {\n      contextInfo.push(`📁 ${fileType}`);\n    } else if (fileSize) {\n      contextInfo.push(`📁 ${fileSize}`);\n    }\n    \n    if (contextInfo.length > 0) {\n      blocks.push({\n        \"type\": \"context\",\n        \"elements\": [\n          {\n            \"type\": \"mrkdwn\",\n            \"text\": contextInfo.join(' | ')\n          }\n        ]\n      });\n    }\n    \n    // Create comprehensive fallback text\n    const fallbackParts = [\n      `New episode: ${episodeTitle}`,\n      podcastName !== 'Unknown Podcast' ? `from ${podcastName}` : '',\n      duration ? `(${duration})` : '',\n      publishDate ? `published ${publishDate}` : ''\n    ].filter(part => part.length > 0);\n    \n    const fallbackText = fallbackParts.join(' ');\n    \n    // Return complete payload for this episode\n    return {\n      \"text\": fallbackText,\n      \"blocks\": blocks,\n      \"parameters\": {\n        // Original values for reference\n        \"original\": {\n          episodeData: podcastEpisode || {},\n          ingestionSources: ingestionSources || {}\n        },\n        // Normalized values actually used\n        \"normalized\": normalizedData\n      },\n      \"metadata\": {\n        \"generatedAt\": new Date().toISOString(),\n        \"notificationType\": \"podcast_episode\",\n        \"itemIndex\": $itemIndex,\n        \"episodeTitle\": episodeTitle,\n        \"podcastName\": podcastName,\n        \"hasAudio\": !!audioUrl,\n        \"hasEpisodeLink\": !!episodeLink,\n        \"architecture\": \"data-transform + accessors\"\n      }\n    };\n  },\n  nodeAccessors, // Node accessors that preserve itemMatching\n  {\n    logErrors: true,\n    stopOnError: false\n  }\n);\n\n// Log comprehensive processing statistics\nconsole.log(`\\n=== Slack Notification Processing Summary ===`);\nconsole.log(`Total items processed: ${result.stats.total}`);\nconsole.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);\nconsole.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);\n\nif (result.stats.failed > 0) {\n  console.log(`\\nError breakdown by type:`);\n  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {\n    console.log(`  ${type}: ${count}`);\n  });\n  \n  console.log(`\\nSample errors:`);\n  (result.stats.sampleErrors || []).forEach((error, index) => {\n    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);\n  });\n}\n\nif (result.stats.successful > 0) {\n  const sample = result.results.find(item => !item.json.$error)?.json;\n  if (sample) {\n    console.log(`\\nSample successful notification:`);\n    console.log(`  Episode: \"${sample.metadata.episodeTitle}\"`);\n    console.log(`  Podcast: ${sample.metadata.podcastName}`);\n    console.log(`  Has Audio: ${sample.metadata.hasAudio}`);\n    console.log(`  Has Episode Link: ${sample.metadata.hasEpisodeLink}`);\n  }\n}\n\nconsole.log(`=== End Processing Summary ===\\n`);\n\n// Return results (maintains n8n item pairing)\nreturn result.results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        -336
+      ],
+      "id": "999bbe24-0180-4519-a8d6-716a1d92ada3",
+      "name": "Slack Blocks"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Podcast Feed Data Normalization\n// Enhanced with sww-n8n-helpers utilities while maintaining exact business logic\n// Placed directly after Check Podcast Feed node\n\nconst { \n  processItemsWithN8N,\n  parseDurationToSeconds,\n  formatFriendlyDuration,\n  generateSafeFileName,\n  extractFileExtension,\n  validateAndExtractUrl,\n  cleanHtml,\n  truncateWithSeparator,\n  createFallbackChain,\n  validateAndFormatDate\n} = require('sww-n8n-helpers');\n\n// Still need some npm packages for specific functionality not covered by utilities\nconst _ = require('lodash');\nconst prettyBytes = require('pretty-bytes');\nconst moment = require('moment');\n\n// Create batch processing helpers with bound $ function\nconst { processItems } = processItemsWithN8N($);\n\nconst feedItems = $input.all();\n\nconsole.log(`Processing ${feedItems.length} feed items`);\n\n// Process each feed item using the modern batch processing utility\nconst batchResult = await processItems(feedItems, ($item, $json, $itemIndex) => {\n  const episode = $json;\n  \n  // Extract and validate audio URL using utility\n  const rawAudioUrl = _.get(episode, 'enclosure.url') || episode.link;\n  const audioUrl = validateAndExtractUrl(rawAudioUrl);\n  const isValidAudioUrl = !!audioUrl;\n  \n  // Build normalized episode using fallback chains and utilities\n  const normalizedEpisode = {\n    // Core episode information\n    episodeGuid: episode.guid || episode.id || null,\n    title: truncateWithSeparator(String(episode.title || ''), 250, { separator: ' ' }),\n    publicationDate: episode.isoDate || episode.pubDate || null,\n    audioUrl: audioUrl,\n    \n    // Content fields using text processing utilities\n    description: truncateWithSeparator(\n      cleanHtml(\n        createFallbackChain(episode, [\n          'content',\n          'content:encoded', \n          'contentSnippet',\n          'itunes.summary'\n        ], '')\n      ) || '',\n      4000,\n      { separator: ' ' }\n    ),\n    \n    summary: truncateWithSeparator(\n      cleanHtml(\n        createFallbackChain(episode, [\n          'contentSnippet',\n          'itunes.subtitle',\n          'itunes.summary'\n        ], '')\n      ) || '',\n      2000,\n      { separator: ' ' }\n    ),\n    \n    // Author information using fallback chain utility\n    author: String(createFallbackChain(episode, [\n      'itunes.author',\n      'dc:creator',\n      'author',\n      'creator'\n    ], 'Unknown')),\n    \n    // Duration handling using utility functions\n    duration: parseDurationToSeconds(_.get(episode, 'itunes.duration')),\n    durationFriendly: null, // Set after parsing\n    \n    // File information with validation and formatting\n    audioFileSize: _.toNumber(_.get(episode, 'enclosure.length')) || null,\n    audioFileSizeFriendly: null, // Set after parsing\n    audioFileType: _.get(episode, 'enclosure.type') || 'audio/mpeg',\n    fileExtension: null, // Set after processing\n    fileName: null, // Set after processing\n    \n    // Episode metadata with URL validation using utility\n    episodeLink: validateAndExtractUrl(episode.link),\n    episodeImage: createFallbackChain(episode, [\n      'itunes.image',\n      'itunes.image.href', \n      'image.url'\n    ], null, (url) => validateAndExtractUrl(url)), // Custom validator function\n    \n    // iTunes specific with proper boolean conversion\n    itunesSubtitle: _.get(episode, 'itunes.subtitle'),\n    itunesExplicit: _.get(episode, 'itunes.explicit') === 'true',\n    \n    // Categories with safe array handling\n    categories: _.isArray(episode.categories) ? \n               episode.categories.join(', ') : \n               (episode.categories ? String(episode.categories) : null),\n    \n    // Processing metadata\n    processingMetadata: {\n      normalizedAt: moment().toISOString(),\n      itemIndex: $itemIndex,\n      hasDescription: !_.isEmpty(cleanHtml(createFallbackChain(episode, ['content', 'content:encoded'], ''))),\n      hasDuration: !_.isNull(parseDurationToSeconds(_.get(episode, 'itunes.duration'))),\n      hasValidAudioUrl: isValidAudioUrl,\n      hasValidEpisodeLink: !!validateAndExtractUrl(episode.link),\n      hasValidImage: !!createFallbackChain(episode, [\n        'itunes.image',\n        'itunes.image.href',\n        'image.url'\n      ], null, (url) => validateAndExtractUrl(url))\n    }\n  };\n  \n  // Validate required fields - throw error for batch processor to handle\n  if (_.isEmpty(normalizedEpisode.title) || !normalizedEpisode.audioUrl) {\n    throw new Error(`Missing required fields: ${\n      [\n        _.isEmpty(normalizedEpisode.title) ? 'title' : null,\n        !normalizedEpisode.audioUrl ? 'audioUrl' : null\n      ].filter(Boolean).join(', ')\n    }`);\n  }\n  \n  // Process publication date using enhanced moment.js validation utility\n  const validatedDate = validateAndFormatDate(normalizedEpisode.publicationDate, {\n    format: [\n      'YYYY-MM-DD[T]HH:mm:ss.SSSZ',  // ISO with milliseconds\n      'YYYY-MM-DD[T]HH:mm:ssZ',      // ISO without milliseconds\n      'ddd, DD MMM YYYY HH:mm:ss ZZ', // RSS pubDate format\n      'YYYY-MM-DD HH:mm:ss',         // Generic datetime\n      'YYYY-MM-DD'                   // Date only\n    ]\n  });\n  \n  if (validatedDate) {\n    normalizedEpisode.publicationDate = validatedDate;\n    normalizedEpisode.publicationDateFriendly = moment(validatedDate).format('MMMM D, YYYY');\n  } else {\n    const now = moment();\n    normalizedEpisode.publicationDate = now.toISOString();\n    normalizedEpisode.publicationDateFriendly = now.format('MMMM D, YYYY');\n  }\n  \n  // Set friendly duration using utility\n  if (normalizedEpisode.duration) {\n    normalizedEpisode.durationFriendly = formatFriendlyDuration(normalizedEpisode.duration);\n  }\n  \n  // Set friendly file size using pretty-bytes (keeping original logic)\n  if (normalizedEpisode.audioFileSize) {\n    normalizedEpisode.audioFileSizeFriendly = prettyBytes(normalizedEpisode.audioFileSize);\n  }\n  \n  // Set file extension using utility\n  normalizedEpisode.fileExtension = extractFileExtension(\n    normalizedEpisode.audioUrl,\n    normalizedEpisode.audioFileType,\n    'mp3' // default extension\n  );\n  \n  // Generate safe filename using utility\n  normalizedEpisode.fileName = generateSafeFileName(\n    normalizedEpisode.title,\n    normalizedEpisode.fileExtension,\n    { maxLength: 100, replacement: '_', fallbackName: 'episode' }\n  );\n  \n  return normalizedEpisode;\n  \n}, [], {\n  logErrors: true,\n  stopOnError: false\n});\n\nconsole.log(`Successfully processed ${batchResult.results.length} items`);\n\n// Log processing statistics\nconsole.log(`Summary: ${batchResult.stats.successful} valid items, ${batchResult.stats.failed} errors`);\nif (batchResult.stats.successRate < 1) {\n  console.log(`Success rate: ${(batchResult.stats.successRate * 100).toFixed(1)}%`);\n}\n\n// Log sample result (maintaining original logic)\nconst validItems = _.filter(batchResult.results, item => !item.json.$error);\nif (!_.isEmpty(validItems)) {\n  const sample = validItems[0].json;\n  console.log(`Sample: \"${sample.title}\" (${sample.durationFriendly || 'no duration'}) - ${sample.publicationDateFriendly}`);\n}\n\nreturn batchResult.results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        0
+      ],
+      "id": "12a1482d-fec6-4752-89c9-a6f91fae068f",
+      "name": "Podcast Episodes"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C096ZG88VDF",
+          "mode": "list",
+          "cachedResultName": "podcasts"
+        },
+        "messageType": "block",
+        "blocksUi": "={ \"blocks\": {{ JSON.stringify($('Slack Blocks').item.json.blocks) }} }",
+        "text": "={{ $('Slack Blocks').item.json.text }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        3504,
+        -336
+      ],
+      "id": "7cf677bf-f6d3-42ce-be6d-c71d61dffd5f",
+      "name": "Notify",
+      "webhookId": "6fe63275-a457-4186-b18e-1ba27a9ca385",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "0uM3ybFCDqqgYQ0Y",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Podcast Episodes').item.json.publicationDate }}",
+                    "rightValue": "={{ $('Ingestion Sources').item.json.knowledgeSource.nextDetectDate }}",
+                    "operator": {
+                      "type": "dateTime",
+                      "operation": "afterOrEquals"
+                    },
+                    "id": "6709f418-a98b-4bab-86b7-b7298ed0152e"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Process"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "4e3b3701-dc99-45da-9258-f31928de5c08",
+                    "leftValue": "={{ $('Podcast Episodes').item.json.publicationDate }}",
+                    "rightValue": "={{ $('Ingestion Sources').item.json.knowledgeSource.nextDetectDate }}",
+                    "operator": {
+                      "type": "dateTime",
+                      "operation": "before"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Skip"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        960,
+        0
+      ],
+      "id": "58ecc530-d0c3-44b2-b449-b01622a3f446",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $('Build Knowledge Operations SQL').item.json.query }}"
+      },
+      "type": "n8n-nodes-base.microsoftSql",
+      "typeVersion": 1.1,
+      "position": [
+        3008,
+        -336
+      ],
+      "id": "90b790b0-d3c6-480c-b8f8-134a39ed4cfc",
+      "name": "Create Knowledge Operations",
+      "credentials": {
+        "microsoftSql": {
+          "id": "4bkXFlb3UysWQwAd",
+          "name": "RiN8N SQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "2b9DpthN81TFaDnA",
+          "mode": "list",
+          "cachedResultName": "Retrieve Ingestion Source"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "KnowledgeSourceTypeId": 1
+          },
+          "matchingColumns": [
+            "KnowledgeSourceTypeId"
+          ],
+          "schema": [
+            {
+              "id": "KnowledgeSourceTypeId",
+              "displayName": "KnowledgeSourceTypeId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        0
+      ],
+      "id": "86f9f70b-3fe2-4c5b-b4f0-3369e317b901",
+      "name": "Ingestion Sources"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Generate Podcast Existence Check SQL (Batch Mode) - Clean Architecture\n// Uses new data normalization + pure SQL generation architecture\n// Handles multiple podcast episodes in \"Run Once for All Items\" mode\n\nconst { \n  processItemsWithAccessors, \n  normalizeData,\n  COMMON_FIELD_CONFIGS,\n  format\n} = require('sww-n8n-helpers');\n\n// Get all input items (podcast episodes)\nconst podcastEpisodes = $input.all();\n\nconsole.log(`Processing ${podcastEpisodes.length} podcast episodes for existence check (accessor version)`);\n\n// Define node accessors that preserve itemMatching behavior\nconst nodeAccessors = {\n  'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json\n};\n\n// Process each podcast episode using accessor pattern\nconst result = await processItemsWithAccessors(\n  podcastEpisodes,\n  // Processor receives: $item, $json, $itemIndex, ingestionSources (from accessor)\n  (_$item, json, itemIndex, ingestionSources) => {\n    // Validate required data\n    if (!ingestionSources?.knowledgeSourceId) {\n      throw new Error(`Missing knowledgeSourceId from Ingestion Sources node for item ${itemIndex}`);\n    }\n\n    if (!json?.episodeGuid && !json?.title) {\n      throw new Error(`Missing both episodeGuid and title from Podcast Episodes for item ${itemIndex}`);\n    }\n\n    // Define normalization schema for the query parameters\n    const querySchema = {\n      knowledgeSourceId: COMMON_FIELD_CONFIGS.knowledgeSourceId,\n      episodeGuid: { ...COMMON_FIELD_CONFIGS.guid, required: false },\n      episodeTitle: { ...COMMON_FIELD_CONFIGS.title, required: false },\n      publicationDate: { ...COMMON_FIELD_CONFIGS.publicationDate, required: false }\n    };\n\n    // Prepare raw data for normalization\n    const rawQueryData = {\n      knowledgeSourceId: ingestionSources.knowledgeSourceId,\n      episodeGuid: json.episodeGuid,\n      episodeTitle: json.title,\n      publicationDate: json.publicationDate\n    };\n\n    // Apply business normalization\n    const normalizedData = normalizeData(rawQueryData, querySchema);\n\n    // Build safe SQL query using SqlString.format with placeholders\n    const query = format(`\nSELECT CASE \n  WHEN EXISTS (\n    SELECT KnowledgeSourceInstanceId \n    FROM KnowledgeSourceInstances \n    WHERE KnowledgeSourceId = ?\n      AND SourceId = ?\n  )\n  THEN 1\n  WHEN EXISTS (\n    SELECT KnowledgeSourceInstanceId \n    FROM KnowledgeSourceInstances \n    WHERE Name = ?\n      AND SourceDate = ?\n      AND KnowledgeSourceId = ?\n  )\n  THEN 1\n  ELSE 0\nEND as episode_exists\n`, [\n      normalizedData.knowledgeSourceId,\n      normalizedData.episodeGuid,\n      normalizedData.episodeTitle,\n      normalizedData.publicationDate,\n      normalizedData.knowledgeSourceId\n    ]);\n\n    return {\n      query: query,\n      parameters: {\n        // Original values for reference\n        original: {\n          knowledgeSourceId: ingestionSources.knowledgeSourceId,\n          episodeGuid: json.episodeGuid,\n          episodeTitle: json.title,\n          publicationDate: json.publicationDate\n        },\n        // Normalized values actually used in query\n        normalized: normalizedData\n      },\n      metadata: {\n        generatedAt: new Date().toISOString(),\n        checkType: 'podcast_episode_existence',\n        primaryCheck: normalizedData.episodeGuid ? 'guid' : 'title_date',\n        hasGuid: !!normalizedData.episodeGuid,\n        hasTitle: !!normalizedData.episodeTitle,\n        hasDate: !!normalizedData.publicationDate,\n        itemIndex: itemIndex,\n        architecture: 'data-transform + sql'\n      }\n    };\n  },\n  nodeAccessors,\n  {\n    logErrors: true,\n    stopOnError: false\n  }\n);\n\nconsole.log(`Generated ${result.results.length} podcast existence check queries`);\nconsole.log(`Processing stats: ${result.stats.successful}/${result.stats.total} successful`);\n\nif (result.errors.length > 0) {\n  console.log('Errors encountered:', result.errors);\n}\n\nreturn result.results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        -96
+      ],
+      "id": "08589adf-7576-4ff2-b355-1680663fa386",
+      "name": "Podcast Exists SQL"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Generate Knowledge Operations SQL (Batch Mode) - Clean Architecture\n// Creates KnowledgeSourceInstanceOperations records for newly inserted podcast episodes\n// Uses new data normalization + pure SQL generation architecture\n\nconst { \n  processItemsWithAccessors,\n  normalizeData,\n  COMMON_FIELD_CONFIGS,\n  format,\n  raw\n} = require('sww-n8n-helpers');\n\n// Get all input items (should be the results from podcast insertion)\nconst insertedEpisodes = $input.all();\n\nconsole.log(`Processing ${insertedEpisodes.length} inserted podcast episodes for knowledge operations`);\n\n// Process each inserted episode using clean architecture\nconst result = await processItemsWithAccessors(\n  insertedEpisodes,\n  // Processor function receives: $item, $json, $itemIndex (no additional node data needed)\n  (_$item, $json, $itemIndex) => {\n    const insertResult = $json;\n    \n    // Validate required data - should have KnowledgeSourceInstanceId from the insertion\n    if (!insertResult?.KnowledgeSourceInstanceId) {\n      throw new Error(`Missing KnowledgeSourceInstanceId from insertion result for item ${$itemIndex}`);\n    }\n\n    // Define normalization schema for the operation parameters\n    const operationSchema = {\n      knowledgeSourceInstanceId: COMMON_FIELD_CONFIGS.knowledgeSourceId // GUID\n    };\n\n    // Prepare raw data for normalization\n    const rawOperationData = {\n      knowledgeSourceInstanceId: insertResult.KnowledgeSourceInstanceId\n    };\n\n    // Apply business normalization\n    const normalizedData = normalizeData(rawOperationData, operationSchema);\n    \n    console.log(`Debug values for item ${$itemIndex}:`, {\n      originalInstanceId: insertResult.KnowledgeSourceInstanceId,\n      normalizedInstanceId: normalizedData.knowledgeSourceInstanceId\n    });\n\n    // Build safe SQL query using SqlString.format with placeholders\n    const query = format(`\nINSERT INTO KnowledgeSourceInstanceOperations\n(KnowledgeSourceInstanceOperationId, KnowledgeSourceOperationId, KnowledgeSourceInstanceId)\nSELECT NEWID(), kso.[KnowledgeSourceOperationId], ksi.KnowledgeSourceInstanceId\nFROM KnowledgeSources ks\nINNER JOIN KnowledgeSourceOperations kso ON kso.KnowledgeSourceId = ks.KnowledgeSourceId\nINNER JOIN KnowledgeSourceInstances ksi ON ksi.KnowledgeSourceId = ks.KnowledgeSourceId\nWHERE ksi.KnowledgeSourceInstanceId = ?\n`, [normalizedData.knowledgeSourceInstanceId]);\n\n    return {\n      query: query,\n      parameters: {\n        // Original values for reference\n        original: {\n          knowledgeSourceInstanceId: insertResult.KnowledgeSourceInstanceId\n        },\n        // Normalized values actually used in query\n        normalized: normalizedData\n      },\n      metadata: {\n        generatedAt: new Date().toISOString(),\n        queryType: 'knowledge_source_instance_operations_creation',\n        itemIndex: $itemIndex,\n        hasInstanceId: !!normalizedData.knowledgeSourceInstanceId,\n        architecture: 'data-transform + sql'\n      }\n    };\n  },\n  {}, // No additional node accessors needed\n  {\n    logErrors: true,\n    stopOnError: false\n  }\n);\n\n// Log comprehensive processing statistics\nconsole.log(`\\n=== Knowledge Operations Processing Summary ===`);\nconsole.log(`Total items processed: ${result.stats.total}`);\nconsole.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);\nconsole.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);\n\nif (result.stats.failed > 0) {\n  console.log(`\\nError breakdown by type:`);\n  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {\n    console.log(`  ${type}: ${count}`);\n  });\n  \n  console.log(`\\nSample errors:`);\n  (result.stats.sampleErrors || []).forEach((error, index) => {\n    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);\n  });\n}\n\nif (result.stats.successful > 0) {\n  const sample = result.results.find(item => !item.json.$error)?.json;\n  if (sample) {\n    console.log(`\\nSample successful operation:`);\n    console.log(`  KnowledgeSourceInstanceId: ${sample.parameters.knowledgeSourceInstanceId}`);\n    console.log(`  Query type: ${sample.metadata.queryType}`);\n  }\n}\n\nconsole.log(`=== End Processing Summary ===\\n`);\n\n// Return results (maintains n8n item pairing)\nreturn result.results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2736,
+        -336
+      ],
+      "id": "98f562a1-aeb9-49ab-85f5-2751b090a6cf",
+      "name": "Build Knowledge Operations SQL"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node: Generate Podcast Episode Insertion SQL (Batch Mode)\n// Creates KnowledgeSourceInstances records for new podcast episodes\n// Runs after podcast episode normalization - includes integrated sanitization\n\nconst { \n  processItemsWithAccessors,\n  normalizeData,\n  COMMON_FIELD_CONFIGS,\n  generateInsert,\n  raw\n} = require('sww-n8n-helpers');\n\n// DEBUG: Test direct node access before using batch utility\nconst firstData = $input.all()[0];\nconst ingestion = $('Ingestion Sources').itemMatching(0);\nconsole.log('🧪 DIRECT ACCESS TEST:');\nconsole.log('📋 firstData:', firstData);\nconsole.log('🏢 ingestion:', ingestion);\nconsole.log('🔑 ingestion.json:', ingestion?.json);\nconsole.log('🔑 ingestion keys:', ingestion?.json ? Object.keys(ingestion.json) : 'no json');\n\n// Define node accessors that preserve itemMatching behavior\nconst nodeAccessors = {\n  'Podcast Episodes': (itemIndex) => $('Podcast Episodes').itemMatching(itemIndex)?.json,\n  'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json\n};\n\n// Get input items (filtered items from previous steps)\nconst inputData = $input.all();\n\nconsole.log(`Processing ${inputData.length} filtered input items`);\n\n// Process items with accessor pattern for reliable node data access\nconst result = await processItemsWithAccessors(\n  inputData,\n  // Processor function receives: $item, $json, $itemIndex, podcastEpisodes, ingestionSources (from accessors)\n  ($item, $json, $itemIndex, podcastEpisodes, ingestionSources) => {\n    \n    console.log(`\\n🔍 DEBUGGING ITEM ${$itemIndex}:`);\n    console.log('📋 podcastEpisodes type:', typeof podcastEpisodes);\n    console.log('📋 podcastEpisodes value:', podcastEpisodes);\n    console.log('📋 podcastEpisodes keys:', podcastEpisodes ? Object.keys(podcastEpisodes) : 'null/undefined');\n    \n    console.log('🏢 ingestionSources type:', typeof ingestionSources);\n    console.log('🏢 ingestionSources value:', ingestionSources);\n    console.log('🏢 ingestionSources keys:', ingestionSources ? Object.keys(ingestionSources) : 'null/undefined');\n    \n    // Node data is now provided via accessors - no need for direct $ access testing\n    \n    console.log(`Item ${$itemIndex} - Context injection data:`, {\n      episodeTitle: podcastEpisodes?.title,\n      episodeGuid: podcastEpisodes?.episodeGuid,\n      sourceId: ingestionSources?.knowledgeSourceId || ingestionSources?.KnowledgeSourceId,\n      hasEpisode: !!podcastEpisodes,\n      hasSource: !!ingestionSources,\n      inputItemKeys: $json ? Object.keys($json) : 'no json'\n    });\n\n    // Try both possible field name variants\n    const sourceId = ingestionSources?.knowledgeSourceId || ingestionSources?.KnowledgeSourceId;\n    \n    // Validate required data with improved error messages\n    if (!sourceId) {\n      throw new Error(`Missing knowledgeSourceId from Ingestion Sources for item ${$itemIndex}. Available fields: ${Object.keys(ingestionSources || {}).join(', ')}`);\n    }\n\n    if (!podcastEpisodes?.title) {\n      throw new Error(`Missing title from Podcast Episodes for item ${$itemIndex}. Available fields: ${Object.keys(podcastEpisodes || {}).join(', ')}`);\n    }\n\n    if (!podcastEpisodes?.episodeGuid) {\n      throw new Error(`Missing episodeGuid from Podcast Episodes for item ${$itemIndex}. This is required for episode identification.`);\n    }\n\n    // Define business normalization schema for podcast episodes\n    const episodeSchema = {\n      KnowledgeSourceId: COMMON_FIELD_CONFIGS.knowledgeSourceId,\n      Name: { ...COMMON_FIELD_CONFIGS.title, maxLength: 250 },\n      SourceDate: COMMON_FIELD_CONFIGS.publicationDate,\n      SourceUrl: { ...COMMON_FIELD_CONFIGS.sourceUrl, maxLength: 2000 },\n      SourceId: { ...COMMON_FIELD_CONFIGS.guid, maxLength: 500 },\n      SourceDescription: { ...COMMON_FIELD_CONFIGS.description, maxLength: 4000 },\n      SourceSummary: { ...COMMON_FIELD_CONFIGS.summary, maxLength: 2000 },\n      SourceLink: { ...COMMON_FIELD_CONFIGS.sourceLink, maxLength: 4000 },\n      Duration: COMMON_FIELD_CONFIGS.duration,\n      FriendlyDuration: { type: 'string', maxLength: 50, trimWhitespace: true },\n      Length: COMMON_FIELD_CONFIGS.fileSize,\n      FriendlyLength: { type: 'string', maxLength: 50, trimWhitespace: true },\n      SourceFileExtension: COMMON_FIELD_CONFIGS.fileExtension,\n      SourceMimeType: COMMON_FIELD_CONFIGS.mimeType,\n      SourceFileName: COMMON_FIELD_CONFIGS.fileName,\n      SourceImageUrl: { ...COMMON_FIELD_CONFIGS.imageUrl, maxLength: 4000 },\n      Author: COMMON_FIELD_CONFIGS.author\n    };\n\n    // Prepare raw data for normalization\n    const rawEpisodeData = {\n      KnowledgeSourceId: sourceId,\n      Name: podcastEpisodes.title,\n      SourceDate: podcastEpisodes.publicationDate,\n      SourceUrl: podcastEpisodes.audioUrl,\n      SourceId: podcastEpisodes.episodeGuid,\n      SourceDescription: podcastEpisodes.description,\n      SourceSummary: podcastEpisodes.summary,\n      SourceLink: podcastEpisodes.episodeLink,\n      Duration: podcastEpisodes.duration,\n      FriendlyDuration: podcastEpisodes.durationFriendly,\n      Length: podcastEpisodes.audioFileSize,\n      FriendlyLength: podcastEpisodes.audioFileSizeFriendly,\n      SourceFileExtension: podcastEpisodes.fileExtension,\n      SourceMimeType: podcastEpisodes.audioFileType,\n      SourceFileName: podcastEpisodes.fileName,\n      SourceImageUrl: podcastEpisodes.episodeImage,\n      Author: podcastEpisodes.author\n    };\n\n    // Apply business normalization (handles nulls, truncation, HTML cleaning, etc.)\n    const episodeData = normalizeData(rawEpisodeData, episodeSchema);\n    \n    console.log(`Debug values for item ${$itemIndex}:`, {\n      originalTitle: podcastEpisodes.title,\n      originalGuid: podcastEpisodes.episodeGuid,\n      duration: podcastEpisodes.duration,\n      fileSize: podcastEpisodes.audioFileSize\n    });\n\n    // Generate SQL using the new architecture - pure SQL generation with normalized data\n    const query = generateInsert('KnowledgeSourceInstances', episodeData, {\n      outputClause: 'OUTPUT INSERTED.KnowledgeSourceInstanceId',\n      rawValues: {\n        KnowledgeSourceInstanceId: raw('NEWID()')\n      }\n    });\n\n    return {\n      query: query,\n      parameters: {\n        // Original values\n        original: {\n          knowledgeSourceId: sourceId,\n          episodeTitle: podcastEpisodes.title,\n          episodeGuid: podcastEpisodes.episodeGuid,\n          publicationDate: podcastEpisodes.publicationDate,\n          audioUrl: podcastEpisodes.audioUrl,\n          duration: podcastEpisodes.duration,\n          audioFileSize: podcastEpisodes.audioFileSize\n        },\n        // Processed data for reference\n        processed: {\n          episodeTitle: episodeData.Name,\n          episodeGuid: episodeData.SourceId,\n          audioUrl: episodeData.SourceUrl,\n          description: episodeData.SourceDescription,\n          summary: episodeData.SourceSummary\n        }\n      },\n      metadata: {\n        generatedAt: new Date().toISOString(),\n        queryType: 'podcast_episode_insertion',\n        itemIndex: $itemIndex,\n        hasTitle: !!podcastEpisodes.title,\n        hasGuid: !!podcastEpisodes.episodeGuid,\n        hasAudioUrl: !!podcastEpisodes.audioUrl,\n        hasDuration: podcastEpisodes.duration > 0,\n        hasFileSize: podcastEpisodes.audioFileSize > 0\n      }\n    };\n  },\n  nodeAccessors, // Node accessors that preserve itemMatching\n  {\n    logErrors: true,\n    stopOnError: false\n  }\n);\n\n// Log comprehensive processing statistics\nconsole.log(`\\n=== Podcast Episode Processing Summary ===`);\nconsole.log(`Total items processed: ${result.stats.total}`);\nconsole.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);\nconsole.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);\n\nif (result.stats.failed > 0) {\n  console.log(`\\nError breakdown by type:`);\n  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {\n    console.log(`  ${type}: ${count}`);\n  });\n  \n  console.log(`\\nSample errors:`);\n  (result.stats.sampleErrors || []).forEach((error, index) => {\n    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);\n  });\n}\n\nif (result.stats.successful > 0) {\n  const sample = result.results.find(item => !item.json.$error)?.json;\n  if (sample) {\n    console.log(`\\nSample successful episode: \"${sample.parameters.original.episodeTitle}\"`);\n    console.log(`  GUID: ${sample.parameters.original.episodeGuid}`);\n    console.log(`  Publication Date: ${sample.parameters.original.publicationDate}`);\n    console.log(`  Duration: ${sample.parameters.original.duration}s`);\n  }\n}\n\nconsole.log(`=== End Processing Summary ===\\n`);\n\n// Return results (maintains n8n item pairing)\nreturn result.results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        -336
+      ],
+      "id": "2ad6e9ec-f24d-47af-b314-5f39c34ebc26",
+      "name": "Build Podcast Record SQL"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule": {
+      "main": [
+        [
+          {
+            "node": "Ingestion Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Podcast Feed": {
+      "main": [
+        [
+          {
+            "node": "Podcast Episodes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Podcast Exists": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Podcast Record SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Podcast Record": {
+      "main": [
+        [
+          {
+            "node": "Build Knowledge Operations SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Update Feeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Blocks": {
+      "main": [
+        [
+          {
+            "node": "Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Podcast Episodes": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Podcast Exists SQL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Feeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Knowledge Operations": {
+      "main": [
+        [
+          {
+            "node": "Slack Blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingestion Sources": {
+      "main": [
+        [
+          {
+            "node": "Check Podcast Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Podcast Exists SQL": {
+      "main": [
+        [
+          {
+            "node": "Podcast Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Knowledge Operations SQL": {
+      "main": [
+        [
+          {
+            "node": "Create Knowledge Operations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Podcast Record SQL": {
+      "main": [
+        [
+          {
+            "node": "Create Podcast Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "I7RrhBpPeMbJ5YFG"
+  },
+  "versionId": "fcd102fb-c7af-4972-adcf-b8cc415f2434",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8edd5d7e3ae181bc95a0413e7506e4b6ee1385f7be5a93f8cbfb6d9b5a737e91"
+  },
+  "id": "db6Lx0BjJL0eJJXd",
+  "tags": [
+    {
+      "createdAt": "2025-07-20T21:55:30.392Z",
+      "updatedAt": "2025-07-20T21:55:30.392Z",
+      "id": "76Es4vlSVLgDZ9bd",
+      "name": "Podcasts"
+    },
+    {
+      "createdAt": "2025-07-21T23:19:05.617Z",
+      "updatedAt": "2025-07-21T23:19:05.617Z",
+      "id": "rRbtsAShXJAoCNNp",
+      "name": "Identification"
+    }
+  ]
+}
