@@ -192,86 +192,6 @@ async function processSingleItem(item, itemIndex, processor, nodeNames, $fn, log
   };
 }
 
-/**
- * Create N8N-specific batch processing helpers with bound $ function
- * @param {Function} $fn - N8N's $ function from Code node context
- * @returns {Object} Helper functions with $ pre-bound and n8n-optimized
- */
-function processItemsWithN8N($fn) {
-  
-  /**
-   * Process n8n items with automatic context injection and node data retrieval
-   * @param {Array} items - N8N items from $input.all() or $('NodeName').all()
-   * @param {Function} processor - Processing function that receives: ($item, $json, $itemIndex, ...nodeData)
-   *   - $item: Full n8n item object
-   *   - $json: Item's json data
-   *   - $itemIndex: Current item index
-   *   - ...nodeData: Individual node data in nodeNames array order, with camelCase parameter names
-   *     Example: ['Ingestion Sources', 'User Settings'] → (item, json, itemIndex, ingestionSources, userSettings)
-   * @param {Array} nodeNames - Array of node names to extract data for each item (can contain spaces/special chars)
-   * @param {Object} options - Processing options
-   * @param {boolean} options.logErrors - Log processing errors (default: true)
-   * @param {boolean} options.stopOnError - Stop processing on first error (default: false)
-   * @returns {Promise<Object>} Processing results with items, errors, and stats
-   */
-  async function processItems(items, processor, nodeNames = [], options = {}) {
-    const { 
-      logErrors = true, 
-      stopOnError = false
-    } = options;
-    
-    // Validate inputs
-    if (!Array.isArray(items)) {
-      throw new Error('Items must be an array from $input.all() or $("NodeName").all()');
-    }
-    
-    if (typeof processor !== 'function') {
-      throw new Error('Processor must be a function');
-    }
-    
-    if (!Array.isArray(nodeNames)) {
-      throw new Error('NodeNames must be an array of node names');
-    }
-    
-    // Add explicit synchronization delay once at the start to allow n8n state to settle
-    await new Promise(resolve => setTimeout(resolve, 150));
-    
-    const results = [];
-    const errors = [];
-    
-    // Process all items
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const itemIndex = i;
-      
-      try {
-        const result = await processSingleItem(item, itemIndex, processor, nodeNames, $fn, logErrors);
-        results.push(result);
-        
-      } catch (error) {
-        const errorResult = createErrorResult(error, item, itemIndex, logErrors);
-        results.push(errorResult.result);
-        errors.push(errorResult.errorInfo);
-        
-        if (stopOnError) {
-          break;
-        }
-      }
-    }
-    
-    // Calculate statistics
-    const stats = calculateStats(results, errors);
-    
-    return {
-      results,
-      errors,
-      stats
-    };
-  }
-  return {
-    processItems
-  };
-}
 
 /**
  * Process n8n items with node accessor functions to preserve itemMatching behavior
@@ -280,12 +200,14 @@ function processItemsWithN8N($fn) {
  * @param {Object} nodeAccessors - Object with node names as keys and accessor functions as values
  *   Example: { 'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json }
  * @param {Object} options - Processing options
+ * @param {boolean} options.maintainPairing - Maintain n8n item pairing (default: true)
  * @param {boolean} options.logErrors - Log processing errors (default: true)
  * @param {boolean} options.stopOnError - Stop processing on first error (default: false)
  * @returns {Promise<Object>} Processing results with items, errors, and stats
  */
-async function processItemsWithAccessors(items, processor, nodeAccessors = {}, options = {}) {
+async function processItemsWithPairing(items, processor, nodeAccessors = {}, options = {}) {
   const { 
+    maintainPairing = true,
     logErrors = true, 
     stopOnError = false
   } = options;
@@ -350,14 +272,22 @@ async function processItemsWithAccessors(items, processor, nodeAccessors = {}, o
       const processorArgs = [$item, $json, $itemIndex, ...nodeDataArray];
       const result = processor(...processorArgs);
       
-      results.push({
-        json: result,
-        pairedItem: itemIndex
-      });
+      if (maintainPairing) {
+        results.push({
+          json: result,
+          pairedItem: itemIndex
+        });
+      } else {
+        results.push(result);
+      }
       
     } catch (error) {
       const errorResult = createErrorResult(error, item, itemIndex, logErrors);
-      results.push(errorResult.result);
+      if (maintainPairing) {
+        results.push(errorResult.result);
+      } else {
+        results.push(errorResult.result.json);
+      }
       errors.push(errorResult.errorInfo);
       
       if (stopOnError) {
@@ -385,7 +315,6 @@ function calculateStats(results, errors) {
 }
 
 module.exports = {
-  processItemsWithN8N,
-  processItemsWithAccessors,
+  processItemsWithPairing,
   toCamelCase
 };
