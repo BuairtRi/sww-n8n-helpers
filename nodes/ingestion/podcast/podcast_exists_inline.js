@@ -3,7 +3,7 @@
 // Handles multiple podcast episodes in "Run Once for All Items" mode
 
 const { 
-  processItemsWithAccessors, 
+  processItemsWithPairing, 
   normalizeData,
   COMMON_FIELD_CONFIGS,
   format
@@ -12,15 +12,13 @@ const {
 // Get all input items (podcast episodes)
 const podcastEpisodes = $input.all();
 
-console.log(`Processing ${podcastEpisodes.length} podcast episodes for existence check (accessor version)`);
-
 // Define node accessors that preserve itemMatching behavior
 const nodeAccessors = {
   'Ingestion Sources': (itemIndex) => $('Ingestion Sources').itemMatching(itemIndex)?.json
 };
 
 // Process each podcast episode using accessor pattern
-const result = await processItemsWithAccessors(
+const result = await processItemsWithPairing(
   podcastEpisodes,
   // Processor receives: $item, $json, $itemIndex, ingestionSources (from accessor)
   (_$item, json, itemIndex, ingestionSources) => {
@@ -112,11 +110,5 @@ END as episode_exists
   }
 );
 
-console.log(`Generated ${result.results.length} podcast existence check queries`);
-console.log(`Processing stats: ${result.stats.successful}/${result.stats.total} successful`);
-
-if (result.errors.length > 0) {
-  console.log('Errors encountered:', result.errors);
-}
 
 return result.results;

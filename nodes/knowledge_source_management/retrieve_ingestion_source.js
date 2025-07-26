@@ -1,7 +1,7 @@
 // n8n Code Node: Group Knowledge Source Quality Check Configurations
 // Groups SQL query results by KnowledgeSourceId using sww-n8n-helpers utilities
 
-const { processItemsWithAccessors, validation } = require('sww-n8n-helpers');
+const { processItemsWithPairing, validation } = require('sww-n8n-helpers');
 
 const items = $input.all();
 
@@ -108,7 +108,7 @@ const groupedItems = Array.from(sourceGroups.values()).map((group) => ({
 }));
 
 // Process with modern batch processing and add summary info
-const result = await processItemsWithAccessors(
+const result = await processItemsWithPairing(
     groupedItems,
     // Processor receives: $item, $json, $itemIndex
     (_$item, $json, _$itemIndex) => {

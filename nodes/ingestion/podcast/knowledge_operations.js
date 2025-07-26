@@ -3,7 +3,7 @@
 // Uses new data normalization + pure SQL generation architecture
 
 const { 
-  processItemsWithAccessors,
+  processItemsWithPairing,
   normalizeData,
   COMMON_FIELD_CONFIGS,
   format,
@@ -13,10 +13,9 @@ const {
 // Get all input items (should be the results from podcast insertion)
 const insertedEpisodes = $input.all();
 
-console.log(`Processing ${insertedEpisodes.length} inserted podcast episodes for knowledge operations`);
 
 // Process each inserted episode using clean architecture
-const result = await processItemsWithAccessors(
+const result = await processItemsWithPairing(
   insertedEpisodes,
   // Processor function receives: $item, $json, $itemIndex (no additional node data needed)
   (_$item, $json, $itemIndex) => {
@@ -40,10 +39,6 @@ const result = await processItemsWithAccessors(
     // Apply business normalization
     const normalizedData = normalizeData(rawOperationData, operationSchema);
     
-    console.log(`Debug values for item ${$itemIndex}:`, {
-      originalInstanceId: insertResult.KnowledgeSourceInstanceId,
-      normalizedInstanceId: normalizedData.knowledgeSourceInstanceId
-    });
 
     // Build safe SQL query using SqlString.format with placeholders
     const query = format(`
@@ -82,34 +77,10 @@ WHERE ksi.KnowledgeSourceInstanceId = ?
   }
 );
 
-// Log comprehensive processing statistics
-console.log(`\n=== Knowledge Operations Processing Summary ===`);
-console.log(`Total items processed: ${result.stats.total}`);
-console.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);
-console.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);
-
+// Log summary statistics  
 if (result.stats.failed > 0) {
-  console.log(`\nError breakdown by type:`);
-  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {
-    console.log(`  ${type}: ${count}`);
-  });
-  
-  console.log(`\nSample errors:`);
-  (result.stats.sampleErrors || []).forEach((error, index) => {
-    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);
-  });
+  console.log(`Generated ${result.stats.total} operations: ${result.stats.successful} successful, ${result.stats.failed} failed`);
 }
-
-if (result.stats.successful > 0) {
-  const sample = result.results.find(item => !item.json.$error)?.json;
-  if (sample) {
-    console.log(`\nSample successful operation:`);
-    console.log(`  KnowledgeSourceInstanceId: ${sample.parameters.knowledgeSourceInstanceId}`);
-    console.log(`  Query type: ${sample.metadata.queryType}`);
-  }
-}
-
-console.log(`=== End Processing Summary ===\n`);
 
 // Return results (maintains n8n item pairing)
 return result.results;

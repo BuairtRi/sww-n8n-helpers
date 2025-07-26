@@ -3,7 +3,7 @@
 // Uses new accessor pattern for reliable node data access
 
 const { 
-  processItemsWithAccessors,
+  processItemsWithPairing,
   normalizeData,
   COMMON_FIELD_CONFIGS,
   createFallbackChain,
@@ -76,7 +76,6 @@ function createActionButton(text, url, style = "primary") {
 // Get all input items for batch processing
 const inputData = $input.all();
 
-console.log(`Processing ${inputData.length} episodes for Slack notifications`);
 
 // Define node accessors that preserve itemMatching behavior
 const nodeAccessors = {
@@ -85,18 +84,10 @@ const nodeAccessors = {
 };
 
 // Process items using clean architecture
-const result = await processItemsWithAccessors(
+const result = await processItemsWithPairing(
   inputData,
   // Processor function receives: $item, $json, $itemIndex, podcastEpisode, ingestionSources (from accessors)
   (_$item, $json, $itemIndex, podcastEpisode, ingestionSources) => {
-    
-    console.log(`Processing Slack notification for item ${$itemIndex}:`, {
-      hasEpisodeData: !!podcastEpisode,
-      hasIngestionSources: !!ingestionSources,
-      episodeTitle: podcastEpisode?.title || 'Unknown',
-      podcastName: ingestionSources?.knowledgeSource?.name || 'Unknown',
-      inputItemKeys: $json ? Object.keys($json) : 'no json'
-    });
     
     // Define normalization schema for Slack notification data
     const slackDataSchema = {
@@ -347,36 +338,10 @@ const result = await processItemsWithAccessors(
   }
 );
 
-// Log comprehensive processing statistics
-console.log(`\n=== Slack Notification Processing Summary ===`);
-console.log(`Total items processed: ${result.stats.total}`);
-console.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);
-console.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);
-
+// Log summary statistics
 if (result.stats.failed > 0) {
-  console.log(`\nError breakdown by type:`);
-  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {
-    console.log(`  ${type}: ${count}`);
-  });
-  
-  console.log(`\nSample errors:`);
-  (result.stats.sampleErrors || []).forEach((error, index) => {
-    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);
-  });
+  console.log(`Generated ${result.stats.total} notifications: ${result.stats.successful} successful, ${result.stats.failed} failed`);
 }
-
-if (result.stats.successful > 0) {
-  const sample = result.results.find(item => !item.json.$error)?.json;
-  if (sample) {
-    console.log(`\nSample successful notification:`);
-    console.log(`  Episode: "${sample.metadata.episodeTitle}"`);
-    console.log(`  Podcast: ${sample.metadata.podcastName}`);
-    console.log(`  Has Audio: ${sample.metadata.hasAudio}`);
-    console.log(`  Has Episode Link: ${sample.metadata.hasEpisodeLink}`);
-  }
-}
-
-console.log(`=== End Processing Summary ===\n`);
 
 // Return results (maintains n8n item pairing)
 return result.results;

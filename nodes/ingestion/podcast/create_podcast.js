@@ -3,21 +3,13 @@
 // Runs after podcast episode normalization - includes integrated sanitization
 
 const { 
-  processItemsWithAccessors,
+  processItemsWithPairing,
   normalizeData,
   COMMON_FIELD_CONFIGS,
   generateInsert,
   raw
 } = require('sww-n8n-helpers');
 
-// DEBUG: Test direct node access before using batch utility
-const firstData = $input.all()[0];
-const ingestion = $('Ingestion Sources').itemMatching(0);
-console.log('🧪 DIRECT ACCESS TEST:');
-console.log('📋 firstData:', firstData);
-console.log('🏢 ingestion:', ingestion);
-console.log('🔑 ingestion.json:', ingestion?.json);
-console.log('🔑 ingestion keys:', ingestion?.json ? Object.keys(ingestion.json) : 'no json');
 
 // Define node accessors that preserve itemMatching behavior
 const nodeAccessors = {
@@ -28,33 +20,13 @@ const nodeAccessors = {
 // Get input items (filtered items from previous steps)
 const inputData = $input.all();
 
-console.log(`Processing ${inputData.length} filtered input items`);
 
 // Process items with accessor pattern for reliable node data access
-const result = await processItemsWithAccessors(
+const result = await processItemsWithPairing(
   inputData,
   // Processor function receives: $item, $json, $itemIndex, podcastEpisodes, ingestionSources (from accessors)
   ($item, $json, $itemIndex, podcastEpisodes, ingestionSources) => {
-    
-    console.log(`\n🔍 DEBUGGING ITEM ${$itemIndex}:`);
-    console.log('📋 podcastEpisodes type:', typeof podcastEpisodes);
-    console.log('📋 podcastEpisodes value:', podcastEpisodes);
-    console.log('📋 podcastEpisodes keys:', podcastEpisodes ? Object.keys(podcastEpisodes) : 'null/undefined');
-    
-    console.log('🏢 ingestionSources type:', typeof ingestionSources);
-    console.log('🏢 ingestionSources value:', ingestionSources);
-    console.log('🏢 ingestionSources keys:', ingestionSources ? Object.keys(ingestionSources) : 'null/undefined');
-    
-    // Node data is now provided via accessors - no need for direct $ access testing
-    
-    console.log(`Item ${$itemIndex} - Context injection data:`, {
-      episodeTitle: podcastEpisodes?.title,
-      episodeGuid: podcastEpisodes?.episodeGuid,
-      sourceId: ingestionSources?.knowledgeSourceId || ingestionSources?.KnowledgeSourceId,
-      hasEpisode: !!podcastEpisodes,
-      hasSource: !!ingestionSources,
-      inputItemKeys: $json ? Object.keys($json) : 'no json'
-    });
+    // Validate required data from accessors
 
     // Try both possible field name variants
     const sourceId = ingestionSources?.knowledgeSourceId || ingestionSources?.KnowledgeSourceId;
@@ -117,12 +89,6 @@ const result = await processItemsWithAccessors(
     // Apply business normalization (handles nulls, truncation, HTML cleaning, etc.)
     const episodeData = normalizeData(rawEpisodeData, episodeSchema);
     
-    console.log(`Debug values for item ${$itemIndex}:`, {
-      originalTitle: podcastEpisodes.title,
-      originalGuid: podcastEpisodes.episodeGuid,
-      duration: podcastEpisodes.duration,
-      fileSize: podcastEpisodes.audioFileSize
-    });
 
     // Generate SQL using the new architecture - pure SQL generation with normalized data
     const query = generateInsert('KnowledgeSourceInstances', episodeData, {
@@ -173,35 +139,12 @@ const result = await processItemsWithAccessors(
   }
 );
 
-// Log comprehensive processing statistics
-console.log(`\n=== Podcast Episode Processing Summary ===`);
-console.log(`Total items processed: ${result.stats.total}`);
-console.log(`Successful: ${result.stats.successful} (${(result.stats.successRate * 100).toFixed(1)}%)`);
-console.log(`Failed: ${result.stats.failed} (${(result.stats.failureRate * 100).toFixed(1)}%)`);
-
+// Log summary statistics
 if (result.stats.failed > 0) {
-  console.log(`\nError breakdown by type:`);
-  Object.entries(result.stats.errorBreakdown || {}).forEach(([type, count]) => {
-    console.log(`  ${type}: ${count}`);
-  });
-  
-  console.log(`\nSample errors:`);
-  (result.stats.sampleErrors || []).forEach((error, index) => {
-    console.log(`  ${index + 1}. [Item ${error.itemIndex}] ${error.type}: ${error.message}`);
-  });
+  console.log(`Processed ${result.stats.total} episodes: ${result.stats.successful} successful, ${result.stats.failed} failed`);
+} else {
+  console.log(`Successfully processed ${result.stats.successful} podcast episodes`);
 }
-
-if (result.stats.successful > 0) {
-  const sample = result.results.find(item => !item.json.$error)?.json;
-  if (sample) {
-    console.log(`\nSample successful episode: "${sample.parameters.original.episodeTitle}"`);
-    console.log(`  GUID: ${sample.parameters.original.episodeGuid}`);
-    console.log(`  Publication Date: ${sample.parameters.original.publicationDate}`);
-    console.log(`  Duration: ${sample.parameters.original.duration}s`);
-  }
-}
-
-console.log(`=== End Processing Summary ===\n`);
 
 // Return results (maintains n8n item pairing)
 return result.results;

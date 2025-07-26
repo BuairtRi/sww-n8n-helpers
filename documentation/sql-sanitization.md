@@ -1,8 +1,12 @@
-# SQL Sanitization Module
+# SQL Sanitization Module (DEPRECATED)
+
+**⚠️ DEPRECATED: This module is deprecated. Use the new modular approach:**
+- **`sql.js`** - Pure SQL utilities and statement generation
+- **`data-transform.js`** - Business data normalization and transformation
 
 **🔒 SECURITY CRITICAL: This module relies on `tsqlstring` for robust SQL injection prevention**
 
-Comprehensive SQL injection prevention utilities optimized for Microsoft SQL Server (T-SQL) with field-specific sanitization strategies. All sanitization functions use the `tsqlstring` library as the core escaping mechanism to ensure proper T-SQL/SQL Server compatibility and security.
+This is a legacy compatibility module for SQL injection prevention utilities. **For new development, use the modular approach with `sql.js` and `data-transform.js`.**
 
 ## Installation and Dependencies
 

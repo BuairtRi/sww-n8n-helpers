@@ -3,7 +3,7 @@
 // Placed directly after Check Podcast Feed node
 
 const { 
-  processItemsWithAccessors,
+  processItemsWithPairing,
   parseDurationToSeconds,
   formatFriendlyDuration,
   generateSafeFileName,
@@ -22,10 +22,9 @@ const moment = require('moment');
 
 const feedItems = $input.all();
 
-console.log(`Processing ${feedItems.length} feed items`);
 
 // Process each feed item using the modern batch processing utility
-const batchResult = await processItemsWithAccessors(feedItems, ($item, $json, $itemIndex) => {
+const batchResult = await processItemsWithPairing(feedItems, ($item, $json, $itemIndex) => {
   const episode = $json;
   
   // Extract and validate audio URL using utility
@@ -180,19 +179,9 @@ const batchResult = await processItemsWithAccessors(feedItems, ($item, $json, $i
   stopOnError: false
 });
 
-console.log(`Successfully processed ${batchResult.results.length} items`);
-
-// Log processing statistics
-console.log(`Summary: ${batchResult.stats.successful} valid items, ${batchResult.stats.failed} errors`);
-if (batchResult.stats.successRate < 1) {
-  console.log(`Success rate: ${(batchResult.stats.successRate * 100).toFixed(1)}%`);
-}
-
-// Log sample result (maintaining original logic)
-const validItems = _.filter(batchResult.results, item => !item.json.$error);
-if (!_.isEmpty(validItems)) {
-  const sample = validItems[0].json;
-  console.log(`Sample: "${sample.title}" (${sample.durationFriendly || 'no duration'}) - ${sample.publicationDateFriendly}`);
+// Log processing summary
+if (batchResult.stats.failed > 0) {
+  console.log(`Processed ${batchResult.stats.total} episodes: ${batchResult.stats.successful} successful, ${batchResult.stats.failed} failed`);
 }
 
 return batchResult.results;
